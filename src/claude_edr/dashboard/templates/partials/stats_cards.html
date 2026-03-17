@@ -1,0 +1,16 @@
+<div class="stat-card">
+    <div class="stat-number">{{ counts.total_events or 0 }}</div>
+    <div class="stat-label">Events (1h)</div>
+</div>
+<div class="stat-card">
+    <div class="stat-number">{{ active_agents if active_agents is defined else (agents|length if agents is defined else 0) }}</div>
+    <div class="stat-label">Active Agents</div>
+</div>
+<div class="stat-card {% if counts.open_alerts and counts.open_alerts > 0 %}stat-danger{% endif %}">
+    <div class="stat-number">{{ counts.open_alerts or 0 }}</div>
+    <div class="stat-label">Open Alerts</div>
+</div>
+<div class="stat-card">
+    <div class="stat-number">{{ events_processed if events_processed is defined else counts.total_events or 0 }}</div>
+    <div class="stat-label">Processed</div>
+</div>

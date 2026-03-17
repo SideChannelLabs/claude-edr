@@ -1,0 +1,203 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — Active exploitation
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: PROC-001
+    name: Reverse shell process
+    description: >
+      Process spawned by agent matches known reverse shell patterns.
+      Netcat, socat, or bash redirecting to a remote socket.
+    severity: CRITICAL
+    tags: [process, reverse_shell, c2]
+    conditions:
+      - field: category
+        equals: process_activity
+      - any_of:
+          - field: process.cmdline
+            pattern: "nc\\s+.*-e\\s+/bin/(ba)?sh"
+          - field: process.cmdline
+            pattern: "ncat\\s+.*-e\\s+/bin/(ba)?sh"
+          - field: process.cmdline
+            pattern: "socat\\s+.*exec.*sh"
+          - field: process.cmdline
+            pattern: "bash\\s+-i\\s+>.*&.*\\s*/dev/tcp/"
+          - field: process.cmdline
+            pattern: "\\bsh\\s+-i\\b"
+          - field: process.cmdline
+            pattern: "mkfifo.*nc\\s+"
+
+  - id: PROC-005
+    name: Privilege escalation attempt
+    description: >
+      Agent child process attempting to gain root privileges.
+      AI agents should never need elevated permissions.
+    severity: CRITICAL
+    tags: [process, privilege_escalation]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - field: process.name
+        in: [su, sudo, pkexec, doas]
+
+  - id: PROC-006
+    name: Container escape attempt
+    description: >
+      Process attempting to escape namespace isolation via nsenter,
+      chroot, or unshare. Indicates an attempt to break containment.
+    severity: CRITICAL
+    tags: [process, container_escape, evasion]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - field: process.name
+        in: [nsenter, chroot, unshare]
+
+  - id: PROC-009
+    name: Keylogger indicators
+    description: >
+      Process accessing keyboard input devices or using X11 input
+      capture tools. Strong indicator of keylogging malware.
+    severity: CRITICAL
+    tags: [process, keylogger, spyware]
+    conditions:
+      - field: category
+        equals: process_activity
+      - any_of:
+          - field: process.cmdline
+            contains: "/dev/input/"
+          - field: process.name
+            in: [xinput, xdotool, xev]
+          - field: process.cmdline
+            contains: "evdev"
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Dangerous behavior from agent child processes
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: PROC-002
+    name: Crypto miner process
+    description: >
+      Known cryptocurrency miner binary detected among agent child
+      processes. Mining software should never be spawned by a coding agent.
+    severity: HIGH
+    tags: [process, cryptominer, resource_abuse]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - any_of:
+          - field: process.name
+            in: [xmrig, minerd, cpuminer, ethminer, bfgminer, cgminer]
+          - field: process.cmdline
+            pattern: "stratum\\+tcp://"
+          - field: process.cmdline
+            contains: "--coin="
+
+  - id: PROC-003
+    name: Suspicious inline code execution
+    description: >
+      Interpreter running inline code via -c or -e flag. While sometimes
+      legitimate, this is a common pattern for running obfuscated payloads.
+    severity: HIGH
+    tags: [process, inline_exec, obfuscation]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - any_of:
+          - field: process.cmdline
+            pattern: "python[23]?\\s+-c\\s+"
+          - field: process.cmdline
+            pattern: "node\\s+-e\\s+"
+          - field: process.cmdline
+            pattern: "perl\\s+-e\\s+"
+          - field: process.cmdline
+            pattern: "ruby\\s+-e\\s+"
+          - field: process.cmdline
+            pattern: "php\\s+-r\\s+"
+
+  - id: PROC-004
+    name: Binary execution from temp directory
+    description: >
+      Process running from a temporary or world-writable directory.
+      Dropped malware commonly executes from /tmp, /dev/shm, or /var/tmp.
+    severity: HIGH
+    tags: [process, malware, suspicious_path]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - any_of:
+          - field: process.exe_path
+            starts_with: "/tmp/"
+          - field: process.exe_path
+            starts_with: "/dev/shm/"
+          - field: process.exe_path
+            starts_with: "/var/tmp/"
+
+  - id: PROC-008
+    name: Network reconnaissance
+    description: >
+      Agent spawning network scanning or enumeration tools. Coding agents
+      have no legitimate need to scan networks.
+    severity: HIGH
+    tags: [process, recon, network_scan]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - any_of:
+          - field: process.name
+            in: [nmap, masscan, zmap, rustscan]
+          - field: process.cmdline
+            pattern: "netstat\\s+.*-[a-z]*t[a-z]*l[a-z]*n"
+          - field: process.cmdline
+            pattern: "ss\\s+.*-[a-z]*t[a-z]*l[a-z]*n"
+
+  - id: PROC-010
+    name: Persistence via scheduled task
+    description: >
+      Agent installing a scheduled task via cron, at, or systemd timer.
+      This allows malicious code to persist across reboots and sessions.
+    severity: HIGH
+    tags: [process, persistence, scheduled_task]
+    conditions:
+      - field: category
+        equals: process_activity
+      - any_of:
+          - field: process.cmdline
+            contains: "crontab"
+          - field: process.name
+            equals: at
+          - field: process.cmdline
+            pattern: "systemctl\\s+enable"
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Unusual but possibly legitimate
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: PROC-007
+    name: Compiler invocation from agent
+    description: >
+      Agent spawning a compiler (gcc, clang, make). While sometimes
+      legitimate for build tasks, compiling arbitrary code at runtime
+      from an AI agent is suspicious.
+    severity: MEDIUM
+    tags: [process, compiler, suspicious]
+    conditions:
+      - field: category
+        equals: process_activity
+      - field: action
+        in: [process_spawn, process_exec]
+      - field: process.name
+        in: [gcc, g++, clang, clang++, make, cmake, cc]

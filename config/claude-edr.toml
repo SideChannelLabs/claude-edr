@@ -1,0 +1,34 @@
+# Claude EDR Configuration
+# Copy to ~/.config/claude-edr/config.toml to customize
+
+# Unix socket for hook → daemon communication
+socket_path = "/run/claude-edr/edr.sock"
+
+[sensors]
+hooks_enabled = true           # Claude Code hook sensor
+process_monitor_enabled = true # Process tree monitoring (psutil)
+ebpf_enabled = false           # eBPF deep monitoring (requires CAP_BPF)
+log_watcher_enabled = true     # Watch agent log files
+poll_interval_ms = 500         # Process monitor poll interval
+
+[storage]
+db_path = "~/.local/share/claude-edr/events.db"
+retention_days = 7             # Auto-delete events older than this
+max_db_size_mb = 500           # Max database size
+
+[dashboard]
+enabled = true
+host = "127.0.0.1"            # Only listen on localhost
+port = 7400                    # Dashboard URL: http://localhost:7400
+
+[detection]
+rules_dirs = ["rules"]         # Directories to load .yaml rules from
+anomaly_detection = false      # Statistical anomaly detection (Phase 2)
+
+[alerts]
+webhook_url = ""               # POST alerts to this URL (empty = disabled)
+min_severity = 3               # Minimum severity to alert (0=INFO, 3=HIGH, 4=CRITICAL)
+
+[ssl_capture]
+enabled = false                # TLS interception via eBPF uprobes
+capture_mode = "metadata"      # "metadata" | "headers" | "full"

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Agents{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Active Agents</h1>
+</div>
+
+<div class="agents-grid" hx-get="/api/agents" hx-trigger="every 5s" hx-swap="innerHTML" hx-target="#agents-container">
+    <div id="agents-container">
+        {% if agents %}
+            {% for agent in agents %}
+            <div class="agent-card">
+                <div class="agent-header">
+                    <span class="agent-type-badge">{{ agent.agent_type }}</span>
+                    <span class="agent-pid">PID {{ agent.root_pid }}</span>
+                </div>
+                <div class="agent-details">
+                    <div class="agent-stat">
+                        <span class="stat-label">Session</span>
+                        <span class="stat-value">{{ agent.session_id[:12] }}...</span>
+                    </div>
+                    <div class="agent-stat">
+                        <span class="stat-label">Working Dir</span>
+                        <span class="stat-value" title="{{ agent.working_directory }}">{{ agent.working_directory }}</span>
+                    </div>
+                    <div class="agent-stat">
+                        <span class="stat-label">Events</span>
+                        <span class="stat-value">{{ agent.event_count }}</span>
+                    </div>
+                    <div class="agent-stat">
+                        <span class="stat-label">Alerts</span>
+                        <span class="stat-value {% if agent.alert_count > 0 %}text-danger{% endif %}">{{ agent.alert_count }}</span>
+                    </div>
+                    <div class="agent-stat">
+                        <span class="stat-label">Children</span>
+                        <span class="stat-value">{{ agent.child_pids|length }}</span>
+                    </div>
+                </div>
+                <div class="agent-actions">
+                    <a href="/forensics?session={{ agent.session_id }}" class="btn btn-sm">Investigate</a>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <p>No AI agents detected. Start Claude Code, Cursor, or another agent to begin monitoring.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

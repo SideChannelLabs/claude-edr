@@ -1,0 +1,12 @@
+{% for event in events %}
+<div class="event-row severity-{{ event.severity or 0 }}">
+    <span class="event-time">{{ event.timestamp }}</span>
+    <span class="badge badge-{% if event.severity >= 4 %}critical{% elif event.severity >= 3 %}high{% elif event.severity >= 2 %}medium{% elif event.severity >= 1 %}low{% else %}info{% endif %}">
+        {% if event.severity >= 4 %}CRIT{% elif event.severity >= 3 %}HIGH{% elif event.severity >= 2 %}MED{% elif event.severity >= 1 %}LOW{% else %}INFO{% endif %}
+    </span>
+    <span class="event-agent">{{ event.agent_type or '-' }}</span>
+    <span class="event-action">{{ event.action }}</span>
+    <span class="event-tool">{{ event.tool_name or '' }}</span>
+    <span class="event-detail">{{ event.file_path or event.process_cmdline or event.net_remote_addr or '' }}</span>
+</div>
+{% endfor %}

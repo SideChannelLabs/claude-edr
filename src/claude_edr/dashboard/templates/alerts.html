@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Alerts</h1>
+    <div class="header-actions">
+        <select id="alert-status-filter" onchange="filterAlerts()">
+            <option value="">All</option>
+            <option value="open" selected>Open</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
+        </select>
+    </div>
+</div>
+
+<div class="alerts-list" hx-get="/api/alerts?status=open" hx-trigger="every 10s" hx-swap="innerHTML" hx-target="#alerts-container">
+    <div id="alerts-container">
+        {% if alerts %}
+            {% for alert in alerts %}
+            <div class="alert-card severity-{{ alert.severity }}">
+                <div class="alert-header">
+                    <span class="alert-severity badge badge-{% if alert.severity >= 4 %}critical{% elif alert.severity >= 3 %}high{% elif alert.severity >= 2 %}medium{% else %}low{% endif %}">
+                        {% if alert.severity >= 4 %}CRITICAL{% elif alert.severity >= 3 %}HIGH{% elif alert.severity >= 2 %}MEDIUM{% elif alert.severity >= 1 %}LOW{% else %}INFO{% endif %}
+                    </span>
+                    <span class="alert-title">{{ alert.title }}</span>
+                    <span class="alert-time">{{ alert.timestamp }}</span>
+                </div>
+                <div class="alert-body">
+                    <p>{{ alert.description }}</p>
+                    <div class="alert-meta">
+                        <span>Rule: {{ alert.rule_name }}</span>
+                        <span>Agent: {{ alert.agent_type or 'unknown' }}</span>
+                        <span>Status: <strong>{{ alert.status }}</strong></span>
+                    </div>
+                </div>
+                <div class="alert-actions">
+                    {% if alert.status == 'open' %}
+                    <button class="btn btn-sm" onclick="updateAlertStatus('{{ alert.id }}', 'acknowledged')">Acknowledge</button>
+                    <button class="btn btn-sm btn-success" onclick="updateAlertStatus('{{ alert.id }}', 'resolved')">Resolve</button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <p>No alerts. All clear.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function updateAlertStatus(alertId, status) {
+    await fetch(`/api/alerts/${alertId}/status`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: status})
+    });
+    htmx.trigger(document.querySelector('.alerts-list'), 'htmx:trigger');
+    location.reload();
+}
+</script>
+{% endblock %}

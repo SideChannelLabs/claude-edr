@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Rule: {{ rule.id }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <a href="/rules">Rules</a> <span class="sep">&#8250;</span>
+    <span class="current">{{ rule.id }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ rule.name }}</h1>
+    <div class="header-actions">
+        <span class="badge badge-{% if rule.severity == 'CRITICAL' %}critical{% elif rule.severity == 'HIGH' %}high{% elif rule.severity == 'MEDIUM' %}medium{% else %}info{% endif %}">{{ rule.severity }}</span>
+        {% if rule.enabled %}
+        <span class="badge badge-success">ENABLED</span>
+        {% else %}
+        <span class="badge badge-dim">DISABLED</span>
+        {% endif %}
+        <span class="badge badge-dim">{{ rule.source or 'default' }}</span>
+    </div>
+</div>
+
+<!-- Configuration -->
+<h3 class="section-title">Configuration</h3>
+<form id="edit-form" onsubmit="saveRule(event)">
+    <table class="events-table config-table">
+        <tbody>
+            <tr>
+                <td class="config-label">Rule ID</td>
+                <td class="mono">{{ rule.id }}</td>
+            </tr>
+            <tr>
+                <td class="config-label">Name</td>
+                <td><input type="text" name="name" value="{{ rule.name }}" class="form-input" required></td>
+            </tr>
+            <tr>
+                <td class="config-label">Description</td>
+                <td><input type="text" name="description" value="{{ rule.description }}" class="form-input"></td>
+            </tr>
+            <tr>
+                <td class="config-label">Severity</td>
+                <td>
+                    <select name="severity" class="form-input">
+                        {% for sev in ['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] %}
+                        <option value="{{ sev }}" {% if rule.severity == sev %}selected{% endif %}>{{ sev }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td class="config-label">Tags</td>
+                <td><input type="text" name="tags" value="{{ rule.tags | join(', ') }}" class="form-input" placeholder="comma-separated tags"></td>
+            </tr>
+            <tr>
+                <td class="config-label">Enabled</td>
+                <td>
+                    <label class="toggle-label">
+                        <input type="checkbox" name="enabled" {% if rule.enabled %}checked{% endif %}>
+                        <span>{{ 'Active - evaluating events' if rule.enabled else 'Disabled - not evaluating' }}</span>
+                    </label>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Conditions -->
+    <h3 class="section-title">Conditions (all must match)</h3>
+    <div id="conditions-container">
+        {% for cond in rule.conditions %}
+        <div class="condition-row">
+            <select name="cond_field_{{ loop.index0 }}" class="form-input form-input-sm">
+                {% for f in ['file.path', 'process.cmdline', 'agent.tool_name', 'action', 'category', 'network.remote_addr', 'network.domain', 'agent.agent_type'] %}
+                <option value="{{ f }}" {% if cond.field == f %}selected{% endif %}>{{ f }}</option>
+                {% endfor %}
+            </select>
+            <select name="cond_op_{{ loop.index0 }}" class="form-input form-input-sm">
+                {% for op in ['pattern', 'equals', 'contains', 'starts_with', 'in', 'not_contains', 'not_equals', 'not_in', 'not_starts_with'] %}
+                <option value="{{ op }}" {% if cond.get(op) is not none %}selected{% endif %}>{{ op }}{% if op == 'pattern' %} (regex){% endif %}{% if op == 'in' %} (comma-sep){% endif %}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="cond_val_{{ loop.index0 }}" value="{{ cond.values() | list | last }}" class="form-input form-input-sm" required>
+            <button type="button" class="btn-icon btn-danger-icon" onclick="this.parentElement.remove()">&#10005;</button>
+        </div>
+        {% endfor %}
+    </div>
+    <button type="button" class="btn btn-dim" onclick="addCondition()" style="margin-top:8px;">+ Add Condition</button>
+
+    <div style="margin-top:16px; display:flex; gap:8px;">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <button type="button" class="btn btn-dim" onclick="testRule()">Test Against Recent Events</button>
+        {% if rule.source == 'custom' %}
+        <button type="button" class="btn btn-danger" onclick="deleteRule()">Delete Rule</button>
+        {% endif %}
+    </div>
+</form>
+
+<!-- Test Results -->
+<div id="test-results" style="display:none;">
+    <h3 class="section-title">Test Results</h3>
+    <div id="test-output"></div>
+</div>
+
+<!-- Recent Alerts from this Rule -->
+<h3 class="section-title">Recent Alerts ({{ alerts|length }})</h3>
+{% if alerts %}
+<table class="events-table">
+    <thead>
+        <tr><th>Time</th><th>Sev</th><th>Title</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        {% for al in alerts %}
+        <tr class="severity-{{ al.severity or 0 }} expandable-row" onclick="toggleDetail(this)">
+            <td class="ts">{{ al.timestamp[:19] }}</td>
+            <td><span class="badge badge-{% if al.severity >= 4 %}critical{% elif al.severity >= 3 %}high{% elif al.severity >= 2 %}medium{% else %}info{% endif %}">
+                {% if al.severity >= 4 %}CRIT{% elif al.severity >= 3 %}HIGH{% elif al.severity >= 2 %}MED{% else %}INFO{% endif %}
+            </span></td>
+            <td class="details">{{ al.title }}</td>
+            <td><span class="badge {% if al.status == 'open' %}badge-danger{% else %}badge-dim{% endif %}">{{ al.status | upper }}</span></td>
+        </tr>
+        <tr class="event-detail-row" style="display:none">
+            <td colspan="4">
+                <div class="event-detail-content">
+                    <div class="detail-field"><span class="detail-label">Description:</span> {{ al.description }}</div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No alerts fired by this rule.</div>
+{% endif %}
+
+<script>
+var condCount = {{ rule.conditions|length }};
+
+function addCondition() {
+    var c = document.getElementById('conditions-container');
+    var div = document.createElement('div');
+    div.className = 'condition-row';
+    div.innerHTML = '<select name="cond_field_' + condCount + '" class="form-input form-input-sm">' +
+        '<option value="file.path">file.path</option><option value="process.cmdline">process.cmdline</option>' +
+        '<option value="agent.tool_name">agent.tool_name</option><option value="action">action</option>' +
+        '<option value="category">category</option><option value="network.remote_addr">network.remote_addr</option>' +
+        '<option value="network.domain">network.domain</option><option value="agent.agent_type">agent.agent_type</option>' +
+        '</select>' +
+        '<select name="cond_op_' + condCount + '" class="form-input form-input-sm">' +
+        '<option value="pattern">pattern (regex)</option><option value="equals">equals</option>' +
+        '<option value="contains">contains</option><option value="starts_with">starts_with</option>' +
+        '<option value="in">in (comma-sep)</option><option value="not_contains">not_contains</option>' +
+        '<option value="not_equals">not_equals</option></select>' +
+        '<input type="text" name="cond_val_' + condCount + '" placeholder="value" class="form-input form-input-sm" required>' +
+        '<button type="button" class="btn-icon btn-danger-icon" onclick="this.parentElement.remove()">&#10005;</button>';
+    c.appendChild(div);
+    condCount++;
+}
+
+function gatherFormData() {
+    var form = document.getElementById('edit-form');
+    var data = {
+        name: form.elements['name'].value,
+        description: form.elements['description'].value || '',
+        severity: form.elements['severity'].value,
+        tags: form.elements['tags'].value ? form.elements['tags'].value.split(',').map(function(t) { return t.trim(); }) : [],
+        enabled: form.elements['enabled'].checked,
+        conditions: []
+    };
+    var rows = document.querySelectorAll('#conditions-container .condition-row');
+    rows.forEach(function(row, i) {
+        var field = row.querySelector('[name^="cond_field"]');
+        var op = row.querySelector('[name^="cond_op"]');
+        var val = row.querySelector('[name^="cond_val"]');
+        if (field && op && val && val.value) {
+            var cond = { field: field.value };
+            if (op.value === 'in') {
+                cond[op.value] = val.value.split(',').map(function(v) { return v.trim(); });
+            } else {
+                cond[op.value] = val.value;
+            }
+            data.conditions.push(cond);
+        }
+    });
+    return data;
+}
+
+function saveRule(e) {
+    e.preventDefault();
+    var data = gatherFormData();
+    fetch('/api/rules/{{ rule.id }}', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.ok) { window.location.reload(); }
+        else { alert('Error: ' + (resp.error || 'Unknown')); }
+    });
+}
+
+function testRule() {
+    var data = gatherFormData();
+    fetch('/api/rules/{{ rule.id }}/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        var container = document.getElementById('test-results');
+        var output = document.getElementById('test-output');
+        container.style.display = 'block';
+        if (resp.matches && resp.matches.length > 0) {
+            var html = '<table class="events-table"><thead><tr><th>Time</th><th>Action</th><th>Tool</th><th>Details</th></tr></thead><tbody>';
+            resp.matches.forEach(function(m) {
+                html += '<tr><td class="ts">' + (m.timestamp || '').substring(0,19) + '</td>' +
+                    '<td>' + (m.action || '') + '</td>' +
+                    '<td class="mono">' + (m.tool_name || '-') + '</td>' +
+                    '<td class="details">' + (m.file_path || m.process_cmdline || '') + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            output.innerHTML = '<p style="color:var(--warning); margin-bottom:8px;">Would match <strong>' + resp.matches.length + '</strong> events in the last 24 hours:</p>' + html;
+        } else {
+            output.innerHTML = '<div class="empty-state small">No matches against recent events. Rule would not have fired.</div>';
+        }
+    });
+}
+
+function deleteRule() {
+    if (!confirm('Delete rule "{{ rule.id }}"? This cannot be undone.')) return;
+    fetch('/api/rules/{{ rule.id }}', { method: 'DELETE' })
+        .then(function() { window.location = '/rules'; });
+}
+
+function toggleDetail(row) {
+    var next = row.nextElementSibling;
+    if (next && next.classList.contains('event-detail-row')) {
+        next.style.display = next.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+</script>
+{% endblock %}

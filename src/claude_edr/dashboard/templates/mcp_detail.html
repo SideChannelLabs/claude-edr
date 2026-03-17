@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title_suffix %} - MCP: {{ mcp.name }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <a href="/">Endpoints</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <a href="/endpoint/{{ endpoint.id }}#open=agent-{{ agent_type }},mcps-{{ agent_type }}">{{ endpoint.hostname }}</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <span class="current">MCP: {{ mcp.name }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ mcp.name }}{% if mcp.version %} <span class="badge badge-dim">v{{ mcp.version }}</span>{% endif %}</h1>
+    <div class="header-actions">
+        <span class="badge badge-info">MCP Server</span>
+        <span class="badge badge-dim">{{ mcp.server_type or 'stdio' }}</span>
+        {% if mcp.license %}<span class="badge badge-dim">{{ mcp.license }}</span>{% endif %}
+    </div>
+</div>
+
+{% if mcp.description %}
+<p style="color: var(--text-secondary); margin: -0.5rem 0 1.5rem 0; font-size: 0.95rem;">{{ mcp.description }}</p>
+{% endif %}
+
+<!-- Package Info -->
+{% if mcp.repository or mcp.homepage or mcp.author or mcp.package_name %}
+<h3 class="section-title">Package Info</h3>
+<table class="events-table config-table">
+    <tbody>
+        {% if mcp.package_name %}
+        <tr>
+            <td class="config-label">Package</td>
+            <td class="mono">{{ mcp.package_name }}</td>
+        </tr>
+        {% endif %}
+        {% if mcp.version %}
+        <tr>
+            <td class="config-label">Version</td>
+            <td class="mono">{{ mcp.version }}</td>
+        </tr>
+        {% endif %}
+        {% if mcp.author %}
+        <tr>
+            <td class="config-label">Author</td>
+            <td>{{ mcp.author }}</td>
+        </tr>
+        {% endif %}
+        {% if mcp.repository %}
+        <tr>
+            <td class="config-label">Repository</td>
+            <td><a href="{{ mcp.repository }}" target="_blank" style="color: var(--accent);">{{ mcp.repository }}</a></td>
+        </tr>
+        {% endif %}
+        {% if mcp.homepage %}
+        <tr>
+            <td class="config-label">Homepage</td>
+            <td><a href="{{ mcp.homepage }}" target="_blank" style="color: var(--accent);">{{ mcp.homepage }}</a></td>
+        </tr>
+        {% endif %}
+        {% if mcp.license %}
+        <tr>
+            <td class="config-label">License</td>
+            <td>{{ mcp.license }}</td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Configuration -->
+<h3 class="section-title">Configuration</h3>
+<table class="events-table config-table">
+    <tbody>
+        <tr>
+            <td class="config-label">Name</td>
+            <td class="mono"><strong>{{ mcp.name }}</strong></td>
+        </tr>
+        <tr>
+            <td class="config-label">Server Type</td>
+            <td>{{ mcp.server_type or 'stdio' }}</td>
+        </tr>
+        {% if mcp.command %}
+        <tr>
+            <td class="config-label">Command</td>
+            <td class="mono">{{ mcp.command }}</td>
+        </tr>
+        {% endif %}
+        {% if mcp.args %}
+        <tr>
+            <td class="config-label">Arguments</td>
+            <td class="mono">{{ mcp.args|join(' ') }}</td>
+        </tr>
+        {% endif %}
+        {% if mcp.env_vars %}
+        <tr>
+            <td class="config-label">Environment Variables</td>
+            <td>
+                {% for var in mcp.env_vars %}
+                <span class="badge badge-dim">{{ var }}</span>
+                {% endfor %}
+            </td>
+        </tr>
+        {% endif %}
+        {% if mcp.tools %}
+        <tr>
+            <td class="config-label">Exposed Tools</td>
+            <td>
+                {% for tool in mcp.tools %}
+                <span class="badge badge-info">{{ tool }}</span>
+                {% endfor %}
+            </td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+
+<!-- Alerts -->
+<h3 class="section-title">Alerts ({{ alerts|length }})</h3>
+{% if alerts %}
+<table class="events-table">
+    <thead>
+        <tr><th>Time</th><th>Sev</th><th>Rule</th><th>Title</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        {% for al in alerts %}
+        <tr class="severity-{{ al.severity or 0 }} expandable-row" onclick="toggleDetail(this)">
+            <td class="ts">{{ al.timestamp[:19] }}</td>
+            <td><span class="badge badge-{% if al.severity >= 4 %}critical{% elif al.severity >= 3 %}high{% elif al.severity >= 2 %}medium{% else %}info{% endif %}">
+                {% if al.severity >= 4 %}CRIT{% elif al.severity >= 3 %}HIGH{% elif al.severity >= 2 %}MED{% else %}INFO{% endif %}
+            </span></td>
+            <td class="mono">{{ al.rule_id }}</td>
+            <td class="details">{{ al.title }}</td>
+            <td><span class="badge {% if al.status == 'open' %}badge-danger{% else %}badge-dim{% endif %}">{{ al.status | upper }}</span></td>
+        </tr>
+        <tr class="event-detail-row" style="display:none">
+            <td colspan="5">
+                <div class="event-detail-content">
+                    <div class="detail-field"><span class="detail-label">Description:</span> {{ al.description }}</div>
+                    <div class="detail-field"><span class="detail-label">Rule:</span> <code>{{ al.rule_name }}</code></div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No alerts for this MCP server.</div>
+{% endif %}
+
+<!-- Activity -->
+<h3 class="section-title">Activity ({{ events|length }} events)</h3>
+{% if events %}
+<table class="events-table">
+    <thead>
+        <tr><th>Time</th><th>Sev</th><th>Action</th><th>Tool</th><th>Details</th><th>Risk</th></tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr class="severity-{{ e.severity or 0 }} expandable-row" onclick="toggleDetail(this)">
+            <td class="ts">{{ e.timestamp[:19] }}</td>
+            <td><span class="badge badge-{% if e.severity >= 4 %}critical{% elif e.severity >= 3 %}high{% elif e.severity >= 2 %}medium{% else %}info{% endif %}">
+                {% if e.severity >= 4 %}CRIT{% elif e.severity >= 3 %}HIGH{% elif e.severity >= 2 %}MED{% else %}INFO{% endif %}
+            </span></td>
+            <td>{{ e.action }}</td>
+            <td class="mono">{{ e.tool_name or '-' }}</td>
+            <td class="details">{{ e.file_path or e.process_cmdline or '' }}</td>
+            <td class="mono">{{ '%.0f'|format(e.risk_score) if e.risk_score else '' }}</td>
+        </tr>
+        <tr class="event-detail-row" style="display:none">
+            <td colspan="6">
+                <div class="event-detail-content">
+                    {% if e.tool_input_json %}
+                    <div class="detail-field"><span class="detail-label">Input:</span> <pre class="json-block">{{ e.tool_input_json }}</pre></div>
+                    {% endif %}
+                    {% if e.tool_response_json %}
+                    <div class="detail-field"><span class="detail-label">Response:</span> <pre class="json-block">{{ e.tool_response_json[:500] }}</pre></div>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No activity recorded for this MCP server. Tool calls matching <code>mcp__{{ mcp.name.split(' (')[0] | replace('-', '_') }}__*</code> will appear here.</div>
+{% endif %}
+
+<script>
+function toggleDetail(row) {
+    var next = row.nextElementSibling;
+    if (next && next.classList.contains('event-detail-row')) {
+        next.style.display = next.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+</script>
+{% endblock %}

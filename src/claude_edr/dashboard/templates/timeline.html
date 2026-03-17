@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Timeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Live Timeline</h1>
+    <div class="header-actions">
+        <span id="connection-status" class="badge badge-info">Connecting...</span>
+        <select id="severity-filter" onchange="filterEvents()">
+            <option value="0">All Severities</option>
+            <option value="1">Low+</option>
+            <option value="2">Medium+</option>
+            <option value="3">High+</option>
+            <option value="4">Critical Only</option>
+        </select>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-grid" hx-get="/htmx/stats" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "partials/stats_cards.html" %}
+</div>
+
+<!-- Real-time Event Stream -->
+<div class="event-stream" hx-ext="ws" ws-connect="/ws/events">
+    <table class="events-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Severity</th>
+                <th>Agent</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>Risk</th>
+            </tr>
+        </thead>
+        <tbody id="events-body">
+            <!-- Events populated by WebSocket -->
+        </tbody>
+    </table>
+</div>
+
+<!-- Historical Events (HTMX polled) -->
+<div class="historical-events" hx-get="/htmx/events" hx-trigger="load, every 10s" hx-swap="innerHTML">
+    <p class="loading">Loading events...</p>
+</div>
+
+<script>
+// WebSocket event handler
+document.addEventListener('htmx:wsAfterMessage', function(event) {
+    try {
+        const data = JSON.parse(event.detail.message);
+        addEventRow(data);
+        updateConnectionStatus('connected');
+    } catch(e) {}
+});
+
+function updateConnectionStatus(status) {
+    const el = document.getElementById('connection-status');
+    if (status === 'connected') {
+        el.textContent = 'Live';
+        el.className = 'badge badge-success';
+    } else {
+        el.textContent = 'Disconnected';
+        el.className = 'badge badge-danger';
+    }
+}
+
+function addEventRow(event) {
+    const tbody = document.getElementById('events-body');
+    const row = document.createElement('tr');
+    row.className = `severity-${event.severity || 0}`;
+
+    const sevNames = ['INFO', 'LOW', 'MED', 'HIGH', 'CRIT'];
+    const sevClasses = ['info', 'low', 'medium', 'high', 'critical'];
+    const sev = event.severity || 0;
+
+    let details = '';
+    if (event.agent && event.agent.tool_name) {
+        details = event.agent.tool_name;
+        if (event.file && event.file.path) details += ': ' + event.file.path;
+        if (event.process && event.process.cmdline) details += ': ' + event.process.cmdline.substring(0, 80);
+    } else if (event.file) {
+        details = event.file.path || '';
+    } else if (event.process) {
+        details = event.process.cmdline || event.process.name || '';
+    } else if (event.network) {
+        details = (event.network.domain || event.network.remote_addr || '') + ':' + (event.network.remote_port || '');
+    }
+
+    const ts = new Date(event.timestamp).toLocaleTimeString();
+    const agentType = event.agent ? event.agent.agent_type : '-';
+    const risk = (event.risk_score || 0).toFixed(0);
+
+    row.innerHTML = `
+        <td class="ts">${ts}</td>
+        <td><span class="badge badge-${sevClasses[sev]}">${sevNames[sev]}</span></td>
+        <td class="agent-type">${agentType}</td>
+        <td class="action">${event.action || ''}</td>
+        <td class="details" title="${details}">${details.substring(0, 100)}</td>
+        <td class="risk">${risk > 0 ? risk : ''}</td>
+    `;
+
+    tbody.insertBefore(row, tbody.firstChild);
+
+    // Keep max 200 rows
+    while (tbody.children.length > 200) {
+        tbody.removeChild(tbody.lastChild);
+    }
+}
+</script>
+{% endblock %}

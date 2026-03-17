@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Session {{ session.session_id[:12] }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <a href="/">Endpoints</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <a href="/agent/{{ session.agent_type }}">{{ session.agent_type | default('agent') | replace('_', ' ') | title }}</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <span class="current">Session {{ session.session_id[:12] if session.session_id else 'unknown' }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Session Activity</h1>
+    <div class="header-actions">
+        <span class="badge badge-info">PID {{ session.root_pid | default('?') }}</span>
+        <span class="badge badge-dim">{{ session.working_directory | default('') }}</span>
+    </div>
+</div>
+
+<!-- Session Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ events|length }}</div>
+        <div class="stat-label">Total Events</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ tool_calls|length }}</div>
+        <div class="stat-label">Tool Calls</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ file_events|length }}</div>
+        <div class="stat-label">File Operations</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ network_events|length }}</div>
+        <div class="stat-label">Network Calls</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ llm_events|length }}</div>
+        <div class="stat-label">LLM Requests</div>
+    </div>
+    <div class="stat-card {% if alerts %}stat-danger{% endif %}">
+        <div class="stat-number">{{ alerts|length }}</div>
+        <div class="stat-label">Alerts</div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<div class="tabs">
+    <button class="tab active" onclick="showTab('all')">All Events ({{ events|length }})</button>
+    <button class="tab" onclick="showTab('tools')">Tool Calls ({{ tool_calls|length }})</button>
+    <button class="tab" onclick="showTab('files')">Files ({{ file_events|length }})</button>
+    <button class="tab" onclick="showTab('network')">Network ({{ network_events|length }})</button>
+    <button class="tab" onclick="showTab('llm')">LLM Calls ({{ llm_events|length }})</button>
+    <button class="tab" onclick="showTab('alerts')">Alerts ({{ alerts|length }})</button>
+</div>
+
+<!-- All Events Tab -->
+<div id="tab-all" class="tab-content active">
+    {% if events %}
+    <table class="events-table">
+        <thead>
+            <tr><th>Time</th><th>Sev</th><th>Category</th><th>Action</th><th>Tool</th><th>Details</th><th>Risk</th></tr>
+        </thead>
+        <tbody>
+            {% for e in events %}
+            <tr class="severity-{{ e.severity or 0 }} event-row-expandable" onclick="toggleDetail(this)">
+                <td class="ts">{{ e.timestamp[:19] }}</td>
+                <td><span class="badge badge-{% if e.severity >= 4 %}critical{% elif e.severity >= 3 %}high{% elif e.severity >= 2 %}medium{% elif e.severity >= 1 %}low{% else %}info{% endif %}">
+                    {% if e.severity >= 4 %}CRIT{% elif e.severity >= 3 %}HIGH{% elif e.severity >= 2 %}MED{% elif e.severity >= 1 %}LOW{% else %}INFO{% endif %}
+                </span></td>
+                <td>{{ e.category }}</td>
+                <td>{{ e.action }}</td>
+                <td>{{ e.tool_name or '-' }}</td>
+                <td class="details">{{ e.file_path or e.process_cmdline or e.net_remote_addr or '' }}</td>
+                <td class="risk">{{ '%.0f'|format(e.risk_score) if e.risk_score else '' }}</td>
+            </tr>
+            <tr class="event-detail-row" style="display:none">
+                <td colspan="7">
+                    <div class="event-detail-content">
+                        {% if e.tool_name %}
+                        <div class="detail-field"><span class="detail-label">Tool:</span> {{ e.tool_name }}</div>
+                        {% endif %}
+                        {% if e.tool_input_json %}
+                        <div class="detail-field"><span class="detail-label">Input:</span> <pre class="json-block">{{ e.tool_input_json }}</pre></div>
+                        {% endif %}
+                        {% if e.tool_response_json %}
+                        <div class="detail-field"><span class="detail-label">Response:</span> <pre class="json-block">{{ e.tool_response_json[:500] }}</pre></div>
+                        {% endif %}
+                        {% if e.file_path %}
+                        <div class="detail-field"><span class="detail-label">File:</span> {{ e.file_path }}</div>
+                        {% endif %}
+                        {% if e.process_cmdline %}
+                        <div class="detail-field"><span class="detail-label">Command:</span> <code>{{ e.process_cmdline }}</code></div>
+                        {% endif %}
+                        {% if e.net_remote_addr %}
+                        <div class="detail-field"><span class="detail-label">Remote:</span> {{ e.net_remote_addr }}:{{ e.net_remote_port }}</div>
+                        {% endif %}
+                        {% if e.llm_model %}
+                        <div class="detail-field"><span class="detail-label">Model:</span> {{ e.llm_model }}</div>
+                        <div class="detail-field"><span class="detail-label">Tokens:</span> {{ e.llm_tokens_in or 0 }} in / {{ e.llm_tokens_out or 0 }} out</div>
+                        {% endif %}
+                        {% if e.rule_matches_json %}
+                        <div class="detail-field"><span class="detail-label">Rules Matched:</span> {{ e.rule_matches_json }}</div>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No events recorded for this session.</div>
+    {% endif %}
+</div>
+
+<!-- Tool Calls Tab -->
+<div id="tab-tools" class="tab-content" style="display:none">
+    {% if tool_calls %}
+    <table class="events-table">
+        <thead><tr><th>Time</th><th>Tool</th><th>Input Summary</th><th>Risk</th></tr></thead>
+        <tbody>
+            {% for e in tool_calls %}
+            <tr class="severity-{{ e.severity or 0 }}">
+                <td class="ts">{{ e.timestamp[:19] }}</td>
+                <td><span class="badge badge-info">{{ e.tool_name or e.action }}</span></td>
+                <td class="details">{{ e.file_path or e.process_cmdline or '' }}</td>
+                <td>{{ '%.0f'|format(e.risk_score) if e.risk_score else '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty-state small">No tool calls.</div>{% endif %}
+</div>
+
+<!-- Files Tab -->
+<div id="tab-files" class="tab-content" style="display:none">
+    {% if file_events %}
+    <table class="events-table">
+        <thead><tr><th>Time</th><th>Action</th><th>Path</th><th>Risk</th></tr></thead>
+        <tbody>
+            {% for e in file_events %}
+            <tr class="severity-{{ e.severity or 0 }}">
+                <td class="ts">{{ e.timestamp[:19] }}</td>
+                <td>{{ e.action }}</td>
+                <td class="mono">{{ e.file_path }}</td>
+                <td>{{ '%.0f'|format(e.risk_score) if e.risk_score else '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty-state small">No file events.</div>{% endif %}
+</div>
+
+<!-- Network Tab -->
+<div id="tab-network" class="tab-content" style="display:none">
+    {% if network_events %}
+    <table class="events-table">
+        <thead><tr><th>Time</th><th>Direction</th><th>Remote</th><th>Domain</th><th>Risk</th></tr></thead>
+        <tbody>
+            {% for e in network_events %}
+            <tr class="severity-{{ e.severity or 0 }}">
+                <td class="ts">{{ e.timestamp[:19] }}</td>
+                <td>{{ e.net_direction or 'outbound' }}</td>
+                <td class="mono">{{ e.net_remote_addr }}:{{ e.net_remote_port }}</td>
+                <td>{{ e.net_domain or '-' }}</td>
+                <td>{{ '%.0f'|format(e.risk_score) if e.risk_score else '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty-state small">No network events.</div>{% endif %}
+</div>
+
+<!-- LLM Calls Tab -->
+<div id="tab-llm" class="tab-content" style="display:none">
+    {% if llm_events %}
+    <table class="events-table">
+        <thead><tr><th>Time</th><th>Direction</th><th>Provider</th><th>Model</th><th>Endpoint</th><th>Tokens In</th><th>Tokens Out</th><th>Tools</th><th>Creds?</th></tr></thead>
+        <tbody>
+            {% for e in llm_events %}
+            <tr class="severity-{{ e.severity or 0 }} expandable-row" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'table-row' : 'none'">
+                <td class="ts">{{ e.timestamp[:19] }}</td>
+                <td>{% if e.action == 'llm_call' %}<span class="badge badge-info">REQ</span>{% else %}<span class="badge badge-low">RES</span>{% endif %}</td>
+                <td>{{ e.llm_provider or '-' }}</td>
+                <td class="mono">{{ e.llm_model or '-' }}</td>
+                <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">{{ e.net_domain or '' }}{{ e.tool_input_json[:40] if not e.net_domain and e.tool_input_json else '' }}</td>
+                <td class="mono">{{ e.llm_tokens_in if e.llm_tokens_in else '-' }}</td>
+                <td class="mono">{{ e.llm_tokens_out if e.llm_tokens_out else '-' }}</td>
+                <td>{{ 'Yes' if e.llm_has_tools else '-' }}</td>
+                <td class="{% if e.llm_contains_credentials %}text-danger{% endif %}">{{ 'YES' if e.llm_contains_credentials else '-' }}</td>
+            </tr>
+            <tr style="display:none"><td colspan="9"><pre class="event-detail" style="max-height:300px;overflow:auto;white-space:pre-wrap;font-size:12px;background:#1a1a2e;padding:8px;border-radius:4px">{{ e.tool_input_json or e.tool_response_json or 'No data' }}</pre></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty-state small">No LLM calls captured. Enable SSL capture for LLM monitoring.</div>{% endif %}
+</div>
+
+<!-- Alerts Tab -->
+<div id="tab-alerts" class="tab-content" style="display:none">
+    {% if alerts %}
+        {% for alert in alerts %}
+        <div class="alert-card severity-{{ alert.severity }}">
+            <div class="alert-header">
+                <span class="badge badge-{% if alert.severity >= 4 %}critical{% elif alert.severity >= 3 %}high{% else %}medium{% endif %}">
+                    {% if alert.severity >= 4 %}CRITICAL{% elif alert.severity >= 3 %}HIGH{% else %}MEDIUM{% endif %}
+                </span>
+                <span class="alert-title">{{ alert.title }}</span>
+                <span class="alert-time">{{ alert.timestamp }}</span>
+            </div>
+            <div class="alert-body"><p>{{ alert.description }}</p></div>
+        </div>
+        {% endfor %}
+    {% else %}<div class="empty-state small">No alerts for this session.</div>{% endif %}
+</div>
+
+<script>
+function showTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = 'block';
+    event.target.classList.add('active');
+}
+
+function toggleDetail(row) {
+    const detailRow = row.nextElementSibling;
+    if (detailRow && detailRow.classList.contains('event-detail-row')) {
+        detailRow.style.display = detailRow.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+</script>
+{% endblock %}

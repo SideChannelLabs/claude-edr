@@ -1,0 +1,118 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — Security model bypass
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: SESS-001
+    name: Permission mode bypass detected
+    description: >
+      Agent running with --dangerously-skip-permissions flag or equivalent
+      permissive mode. All tool calls are auto-approved without user
+      review, eliminating the human-in-the-loop safety control.
+    severity: CRITICAL
+    tags: [session, permission_bypass, security_model]
+    conditions:
+      - any_of:
+          - all_of:
+              - field: category
+                equals: process_activity
+              - field: process.cmdline
+                contains: "--dangerously-skip-permissions"
+          - all_of:
+              - field: category
+                equals: tool_call
+              - field: agent.tool_input
+                contains: "--dangerously-skip-permissions"
+          - all_of:
+              - field: category
+                equals: config_change
+              - field: agent.tool_input
+                contains: "dangerously-skip-permissions"
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Behavioral anomalies
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: SESS-006
+    name: Rapid Bash execution
+    description: >
+      Agent making an unusually high number of Bash tool calls. Could
+      indicate a scripted attack, automated exploitation, or runaway
+      agent loop. Triggers on individual suspicious commands when
+      combined with high velocity.
+    severity: HIGH
+    tags: [session, anomaly, velocity]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - field: risk_score
+        greater_than: 0
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Configuration and scope anomalies
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: SESS-002
+    name: Agent operating in system directory
+    description: >
+      Agent working directory is a system path outside /home.
+      Agents operating in /etc, /usr, /var, or /opt may be attempting
+      system-level modifications.
+    severity: MEDIUM
+    tags: [session, boundary_violation, system_access]
+    conditions:
+      - field: category
+        in: [tool_call, session]
+      - field: agent.working_directory
+        exists: true
+      - field: agent.working_directory
+        not_starts_with: "/home/"
+      - field: agent.working_directory
+        not_equals: ""
+
+  - id: SESS-003
+    name: Unknown agent type detected
+    description: >
+      An unrecognized AI agent type is operating on this endpoint.
+      May indicate a new or unauthorized agent installation.
+    severity: MEDIUM
+    tags: [session, unknown_agent, inventory]
+    conditions:
+      - field: category
+        equals: session
+      - field: action
+        equals: session_start
+      - field: agent.agent_type
+        equals: unknown
+
+  - id: SESS-004
+    name: Configuration change during session
+    description: >
+      Agent configuration was modified during an active session.
+      Could be legitimate settings changes or an attempt to modify
+      security controls while the agent is running.
+    severity: MEDIUM
+    tags: [session, config_change]
+    conditions:
+      - field: category
+        equals: config_change
+
+  # ═══════════════════════════════════════════════════════════════
+  # LOW — Informational
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: SESS-007
+    name: New agent session started
+    description: >
+      A new AI agent session has been initiated. Informational event
+      for session tracking and audit trail.
+    severity: LOW
+    tags: [session, audit]
+    conditions:
+      - field: category
+        equals: session
+      - field: action
+        equals: session_start

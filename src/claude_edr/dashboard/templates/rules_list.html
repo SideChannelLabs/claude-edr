@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Rules{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <span class="current">Detection Rules</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Detection Rules</h1>
+    <div class="header-actions">
+        <span class="badge badge-dim">{{ rules|length }} rules loaded</span>
+        <span class="badge badge-info">{{ rules|selectattr('enabled')|list|length }} enabled</span>
+        <button class="btn btn-primary" onclick="document.getElementById('create-modal').style.display='flex'">+ New Rule</button>
+    </div>
+</div>
+
+<!-- Rules Table -->
+<table class="events-table">
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Severity</th>
+            <th>Rule ID</th>
+            <th>Name</th>
+            <th>Conditions</th>
+            <th>Tags</th>
+            <th>Source</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for rule in rules %}
+        <tr class="clickable-row" onclick="window.location='/rules/{{ rule.id }}'">
+            <td>
+                {% if rule.enabled %}
+                <span class="badge badge-success">ON</span>
+                {% else %}
+                <span class="badge badge-dim">OFF</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge badge-{% if rule.severity == 'CRITICAL' %}critical{% elif rule.severity == 'HIGH' %}high{% elif rule.severity == 'MEDIUM' %}medium{% else %}info{% endif %}">
+                    {{ rule.severity }}
+                </span>
+            </td>
+            <td class="mono">{{ rule.id }}</td>
+            <td><strong>{{ rule.name }}</strong></td>
+            <td class="mono">{{ rule.conditions|length }}</td>
+            <td>
+                {% for tag in rule.tags[:3] %}
+                <span class="badge badge-dim">{{ tag }}</span>
+                {% endfor %}
+                {% if rule.tags|length > 3 %}
+                <span class="badge badge-dim">+{{ rule.tags|length - 3 }}</span>
+                {% endif %}
+            </td>
+            <td class="mono">{{ rule.source or 'default' }}</td>
+            <td onclick="event.stopPropagation();">
+                <button class="btn-icon" onclick="toggleRule('{{ rule.id }}', {{ 'false' if rule.enabled else 'true' }})" title="{{ 'Disable' if rule.enabled else 'Enable' }}">
+                    {% if rule.enabled %}&#9724;{% else %}&#9654;{% endif %}
+                </button>
+                {% if rule.source == 'custom' %}
+                <button class="btn-icon btn-danger-icon" onclick="deleteRule('{{ rule.id }}')" title="Delete">&#10005;</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Create Rule Modal -->
+<div class="modal-overlay" id="create-modal" style="display:none" onclick="if(event.target===this) this.style.display='none'">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Create Detection Rule</h3>
+            <button class="btn-icon" onclick="document.getElementById('create-modal').style.display='none'">&#10005;</button>
+        </div>
+        <form id="create-form" onsubmit="createRule(event)">
+            <div class="form-group">
+                <label>Rule ID</label>
+                <input type="text" name="id" required placeholder="e.g. my_custom_rule" pattern="[a-z0-9_]+" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" name="name" required placeholder="e.g. Agent accessing sensitive config" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <input type="text" name="description" placeholder="What this rule detects" class="form-input">
+            </div>
+            <div class="form-group">
+                <label>Severity</label>
+                <select name="severity" class="form-input">
+                    <option value="INFO">INFO</option>
+                    <option value="LOW">LOW</option>
+                    <option value="MEDIUM" selected>MEDIUM</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <input type="text" name="tags" placeholder="e.g. credential_access, ssh" class="form-input">
+            </div>
+
+            <h4 style="margin-top:16px; color:var(--text-primary);">Conditions</h4>
+            <div id="conditions-container">
+                <div class="condition-row">
+                    <select name="cond_field_0" class="form-input form-input-sm">
+                        <option value="file.path">file.path</option>
+                        <option value="process.cmdline">process.cmdline</option>
+                        <option value="agent.tool_name">agent.tool_name</option>
+                        <option value="action">action</option>
+                        <option value="category">category</option>
+                        <option value="network.remote_addr">network.remote_addr</option>
+                        <option value="network.domain">network.domain</option>
+                        <option value="agent.agent_type">agent.agent_type</option>
+                    </select>
+                    <select name="cond_op_0" class="form-input form-input-sm">
+                        <option value="pattern">pattern (regex)</option>
+                        <option value="equals">equals</option>
+                        <option value="contains">contains</option>
+                        <option value="starts_with">starts_with</option>
+                        <option value="in">in (comma-sep)</option>
+                        <option value="not_contains">not_contains</option>
+                        <option value="not_equals">not_equals</option>
+                    </select>
+                    <input type="text" name="cond_val_0" placeholder="value or regex pattern" class="form-input form-input-sm" required>
+                </div>
+            </div>
+            <button type="button" class="btn btn-dim" onclick="addCondition()" style="margin-top:8px;">+ Add Condition</button>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-dim" onclick="document.getElementById('create-modal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Rule</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+var condCount = 1;
+
+function addCondition() {
+    var c = document.getElementById('conditions-container');
+    var div = document.createElement('div');
+    div.className = 'condition-row';
+    div.innerHTML = '<select name="cond_field_' + condCount + '" class="form-input form-input-sm">' +
+        '<option value="file.path">file.path</option>' +
+        '<option value="process.cmdline">process.cmdline</option>' +
+        '<option value="agent.tool_name">agent.tool_name</option>' +
+        '<option value="action">action</option>' +
+        '<option value="category">category</option>' +
+        '<option value="network.remote_addr">network.remote_addr</option>' +
+        '<option value="network.domain">network.domain</option>' +
+        '<option value="agent.agent_type">agent.agent_type</option>' +
+        '</select>' +
+        '<select name="cond_op_' + condCount + '" class="form-input form-input-sm">' +
+        '<option value="pattern">pattern (regex)</option>' +
+        '<option value="equals">equals</option>' +
+        '<option value="contains">contains</option>' +
+        '<option value="starts_with">starts_with</option>' +
+        '<option value="in">in (comma-sep)</option>' +
+        '<option value="not_contains">not_contains</option>' +
+        '<option value="not_equals">not_equals</option>' +
+        '</select>' +
+        '<input type="text" name="cond_val_' + condCount + '" placeholder="value or regex pattern" class="form-input form-input-sm" required>' +
+        '<button type="button" class="btn-icon btn-danger-icon" onclick="this.parentElement.remove()">&#10005;</button>';
+    c.appendChild(div);
+    condCount++;
+}
+
+function createRule(e) {
+    e.preventDefault();
+    var form = document.getElementById('create-form');
+    var data = {
+        id: form.elements['id'].value,
+        name: form.elements['name'].value,
+        description: form.elements['description'].value || '',
+        severity: form.elements['severity'].value,
+        tags: form.elements['tags'].value ? form.elements['tags'].value.split(',').map(function(t) { return t.trim(); }) : [],
+        conditions: []
+    };
+
+    for (var i = 0; i < condCount; i++) {
+        var field = form.elements['cond_field_' + i];
+        var op = form.elements['cond_op_' + i];
+        var val = form.elements['cond_val_' + i];
+        if (field && op && val && val.value) {
+            var cond = { field: field.value };
+            if (op.value === 'in') {
+                cond[op.value] = val.value.split(',').map(function(v) { return v.trim(); });
+            } else {
+                cond[op.value] = val.value;
+            }
+            data.conditions.push(cond);
+        }
+    }
+
+    fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + (resp.error || 'Unknown error'));
+        }
+    });
+}
+
+function toggleRule(ruleId, enable) {
+    fetch('/api/rules/' + ruleId + '/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enable })
+    }).then(function() { window.location.reload(); });
+}
+
+function deleteRule(ruleId) {
+    if (!confirm('Delete rule "' + ruleId + '"? This cannot be undone.')) return;
+    fetch('/api/rules/' + ruleId, {
+        method: 'DELETE'
+    }).then(function() { window.location.reload(); });
+}
+</script>
+{% endblock %}

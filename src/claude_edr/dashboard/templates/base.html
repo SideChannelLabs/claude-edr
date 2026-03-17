@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude EDR{% block title_suffix %}{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-ws@2.0.2/ws.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">
+            <img src="/static/logo.svg" alt="Claude EDR" class="logo-img">
+            <span class="logo-text">Claude EDR</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if page == 'endpoints' %}active{% endif %}">
+                <i class="fa-solid fa-desktop nav-icon"></i> Endpoints
+            </a></li>
+            <li><a href="/timeline" class="{% if page == 'timeline' %}active{% endif %}">
+                <i class="fa-solid fa-timeline nav-icon"></i> Timeline
+            </a></li>
+            <li><a href="/llm-traffic" class="{% if page == 'llm_traffic' %}active{% endif %}">
+                <i class="fa-solid fa-brain nav-icon"></i> LLM Traffic
+            </a></li>
+            <li><a href="/alerts" class="{% if page == 'alerts' %}active{% endif %}">
+                <i class="fa-solid fa-triangle-exclamation nav-icon"></i> Alerts
+            </a></li>
+            <li><a href="/rules" class="{% if page == 'rules' %}active{% endif %}">
+                <i class="fa-solid fa-shield-halved nav-icon"></i> Rules
+            </a></li>
+        </ul>
+        <div class="nav-footer">
+            <span class="version">v0.1.0</span>
+        </div>
+    </nav>
+
+    <main class="content">
+        <!-- Breadcrumb -->
+        {% block breadcrumb %}{% endblock %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

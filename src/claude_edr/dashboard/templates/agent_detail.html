@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title_suffix %} - {{ agent.agent_type | replace('_', ' ') | title }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <a href="/">Endpoints</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <a href="/endpoint/{{ endpoint.id }}">{{ endpoint.hostname }}</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <span class="current">{{ agent.agent_type | replace('_', ' ') | title }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ agent.agent_type | replace('_', ' ') | title }}</h1>
+    <div class="header-actions">
+        {% if agent.installed %}
+            <span class="badge badge-success">Installed</span>
+        {% else %}
+            <span class="badge badge-dim">Not Found</span>
+        {% endif %}
+        {% if agent.permission_mode %}
+            <span class="badge badge-info">Mode: {{ agent.permission_mode }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if agent.installed %}
+
+<!-- MCP Servers -->
+<h3 class="section-title">MCP Servers ({{ agent.mcp_servers|length }})</h3>
+{% if agent.mcp_servers %}
+<table class="events-table">
+    <thead>
+        <tr><th>Name</th><th>Description</th><th>Type</th><th>Events</th><th>Alerts</th></tr>
+    </thead>
+    <tbody>
+        {% for mcp in agent.mcp_servers %}
+        <tr class="clickable-row {% if loop.index > 5 %}overflow-row-mcp{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/agent/{{ agent.agent_type }}/mcp/{{ mcp.name | urlencode }}';">
+            <td><strong>{{ mcp.name }}</strong>{% if mcp.version %} <span class="badge badge-dim" style="font-size:0.7rem">v{{ mcp.version }}</span>{% endif %}</td>
+            <td class="details" style="color: var(--text-secondary); font-size: 0.85rem;">{{ mcp.description or '' }}</td>
+            <td><span class="badge badge-dim">{{ mcp.server_type }}</span></td>
+            <td class="mono">{{ mcp.event_count or 0 }}</td>
+            <td class="mono {% if (mcp.alert_count or 0) > 0 %}text-danger{% endif %}">{{ mcp.alert_count or 0 }}</td>
+        </tr>
+        {% endfor %}
+        {% if agent.mcp_servers|length > 5 %}
+        <tr class="show-more-row" id="show-more-mcp">
+            <td colspan="5"><a class="show-more-link" onclick="showAll('overflow-row-mcp', 'show-more-mcp')">Show all {{ agent.mcp_servers|length }} MCP servers</a></td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No MCP servers configured.</div>
+{% endif %}
+
+<!-- Hooks -->
+<h3 class="section-title">Hooks ({{ agent.hooks|length }})</h3>
+{% if agent.hooks %}
+<table class="events-table">
+    <thead>
+        <tr><th>Event</th><th>Matcher</th><th>Command</th><th>Events</th><th>Alerts</th></tr>
+    </thead>
+    <tbody>
+        {% for hook in agent.hooks %}
+        <tr class="clickable-row {% if loop.index > 5 %}overflow-row-hook{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/agent/{{ agent.agent_type }}/hook/{{ loop.index0 }}';">
+            <td><span class="badge badge-info">{{ hook.event_type }}</span></td>
+            <td class="mono">{{ hook.matcher or '*' }}</td>
+            <td class="mono details">{{ hook.command.split('/')[-1] }}</td>
+            <td class="mono">{{ hook.event_count or 0 }}</td>
+            <td class="mono {% if (hook.alert_count or 0) > 0 %}text-danger{% endif %}">{{ hook.alert_count or 0 }}</td>
+        </tr>
+        {% endfor %}
+        {% if agent.hooks|length > 5 %}
+        <tr class="show-more-row" id="show-more-hook">
+            <td colspan="5"><a class="show-more-link" onclick="showAll('overflow-row-hook', 'show-more-hook')">Show all {{ agent.hooks|length }} hooks</a></td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No hooks configured.</div>
+{% endif %}
+
+<!-- Extensions -->
+{% if agent.extensions %}
+<h3 class="section-title">Extensions ({{ agent.extensions|length }})</h3>
+<table class="events-table">
+    <thead><tr><th>Extension ID</th></tr></thead>
+    <tbody>
+        {% for ext in agent.extensions %}
+        <tr class="{% if loop.index > 5 %}overflow-row-ext{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %}>
+            <td class="mono">{{ ext }}</td>
+        </tr>
+        {% endfor %}
+        {% if agent.extensions|length > 5 %}
+        <tr class="show-more-row" id="show-more-ext">
+            <td><a class="show-more-link" onclick="showAll('overflow-row-ext', 'show-more-ext')">Show all {{ agent.extensions|length }} extensions</a></td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Alerts -->
+{% if alerts %}
+<h3 class="section-title">Alerts ({{ alerts|length }})</h3>
+<table class="events-table">
+    <thead><tr><th>Time</th><th>Sev</th><th>Rule</th><th>Title</th><th>Status</th></tr></thead>
+    <tbody>
+        {% for al in alerts %}
+        <tr class="severity-{{ al.severity or 0 }}">
+            <td class="ts">{{ al.timestamp[:19] }}</td>
+            <td><span class="badge badge-{% if al.severity >= 4 %}critical{% elif al.severity >= 3 %}high{% elif al.severity >= 2 %}medium{% else %}info{% endif %}">
+                {% if al.severity >= 4 %}CRIT{% elif al.severity >= 3 %}HIGH{% elif al.severity >= 2 %}MED{% else %}INFO{% endif %}
+            </span></td>
+            <td class="mono">{{ al.rule_id }}</td>
+            <td class="details">{{ al.title }}</td>
+            <td><span class="badge {% if al.status == 'open' %}badge-danger{% else %}badge-dim{% endif %}">{{ al.status | upper }}</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Active Sessions -->
+<h3 class="section-title">Active Sessions</h3>
+{% if sessions %}
+<table class="events-table">
+    <thead><tr><th>PID</th><th>Working Directory</th><th>Events</th><th>Alerts</th><th>Last Activity</th></tr></thead>
+    <tbody>
+        {% for session in sessions %}
+        <tr class="clickable-row" onclick="window.location='/session/{{ session.session_id }}'">
+            <td class="mono">{{ session.root_pid }}</td>
+            <td class="details mono">{{ session.working_directory }}</td>
+            <td class="mono">{{ session.event_count }}</td>
+            <td class="mono {% if session.alert_count > 0 %}text-danger{% endif %}">{{ session.alert_count }}</td>
+            <td class="ts">{{ session.last_activity[:19] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state small">No active sessions.</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">{{ agent.agent_type | replace('_', ' ') | title }} is not installed on this endpoint.</div>
+{% endif %}
+
+<script>
+function showAll(cls, moreId) {
+    document.querySelectorAll('.' + cls).forEach(function(r) { r.style.display = 'table-row'; });
+    var m = document.getElementById(moreId);
+    if (m) m.style.display = 'none';
+}
+</script>
+{% endblock %}

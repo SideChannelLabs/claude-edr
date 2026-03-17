@@ -1,0 +1,159 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — Active C2 or credential theft
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: NET-003
+    name: C2 port connection
+    description: >
+      Outbound connection to a port commonly used by C2 frameworks,
+      IRC botnets, or known malware. Port 4444 (Metasploit),
+      6667/6697 (IRC), 1337, 8888, 31337.
+    severity: CRITICAL
+    tags: [network, c2, malware]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: network.direction
+        equals: outbound
+      - field: network.remote_port
+        in: [4444, 6667, 6697, 1337, 8888, 31337, 5555, 9999]
+
+  - id: NET-007
+    name: Cloud metadata service access
+    description: >
+      Connection to 169.254.169.254 (AWS/GCP/Azure metadata endpoint).
+      This is the #1 technique for stealing cloud credentials from
+      compromised instances. SSRF and agent abuse target this endpoint.
+    severity: CRITICAL
+    tags: [network, cloud, credential_theft, metadata]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: network.remote_addr
+        in: ["169.254.169.254", "fd00:ec2::254"]
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Suspicious network behavior
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: NET-002
+    name: Direct IP connection without DNS
+    description: >
+      Outbound connection to a raw IP address (no DNS resolution).
+      Legitimate services use domain names. Direct IP connections
+      bypass DNS logging and may indicate hardcoded C2 addresses.
+    severity: HIGH
+    tags: [network, evasion, c2]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: network.direction
+        equals: outbound
+      - field: network.domain
+        equals: ""
+      - field: network.remote_addr
+        not_starts_with: "127."
+      - field: network.remote_addr
+        not_equals: "::1"
+      - field: network.remote_addr
+        not_starts_with: "169.254."
+      - field: network.remote_addr
+        not_starts_with: "10."
+      - field: network.remote_addr
+        not_starts_with: "192.168."
+      - field: network.remote_addr
+        not_starts_with: "172."
+
+  - id: NET-004
+    name: Suspicious TLD DNS query
+    description: >
+      DNS resolution for domains in TLDs frequently abused by malware
+      campaigns. Free TLDs (.tk, .ml, .ga, .cf) are heavily used for
+      phishing and C2 infrastructure.
+    severity: HIGH
+    tags: [network, dns, malware_tld]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: action
+        equals: net_dns
+      - any_of:
+          - field: network.domain
+            pattern: "\\.(tk|ml|ga|cf|gq)$"
+          - field: network.domain
+            pattern: "\\.onion$"
+          - field: network.domain
+            pattern: "\\.bit$"
+
+  - id: NET-005
+    name: Inbound network listener
+    description: >
+      Agent process binding a listening port accessible beyond localhost.
+      This opens an attack surface and could be a backdoor listener.
+    severity: HIGH
+    tags: [network, listener, backdoor]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: action
+        equals: net_listen
+      - field: network.local_addr
+        not_equals: "127.0.0.1"
+      - field: network.local_addr
+        not_equals: "::1"
+
+  - id: NET-008
+    name: Tor or proxy connection
+    description: >
+      Connection to known Tor entry node ports or common anonymization
+      proxy ports. Agents using Tor are attempting to hide their traffic.
+    severity: HIGH
+    tags: [network, tor, anonymization, evasion]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: network.direction
+        equals: outbound
+      - field: network.remote_port
+        in: [9050, 9150, 9051]
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Anomalous but may be legitimate
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: NET-001
+    name: Non-standard outbound port
+    description: >
+      Outbound connection to a port outside the standard set (80, 443,
+      22, 53, 8080, 8443, 3000). May indicate C2 communication or
+      non-standard services.
+    severity: MEDIUM
+    tags: [network, anomaly, non_standard_port]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: network.direction
+        equals: outbound
+      - field: network.remote_port
+        not_in: [80, 443, 22, 53, 8080, 8443, 3000, 3001, 5000, 5173, 5432, 3306, 6379, 27017, 0]
+      - field: network.remote_addr
+        not_starts_with: "127."
+      - field: network.remote_addr
+        not_equals: "::1"
+
+  - id: NET-006
+    name: DNS tunneling indicators
+    description: >
+      DNS queries with unusually long subdomain labels, which is a
+      common pattern for DNS tunneling (data exfiltration via DNS).
+    severity: MEDIUM
+    tags: [network, dns, tunneling, exfiltration]
+    conditions:
+      - field: category
+        equals: network_activity
+      - field: action
+        equals: net_dns
+      - field: network.domain
+        pattern: "[a-zA-Z0-9]{30,}\\."

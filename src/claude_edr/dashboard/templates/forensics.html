@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Forensics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Forensics</h1>
+</div>
+
+<div class="forensics-controls">
+    <div class="control-group">
+        <label>Agent Session</label>
+        <select id="session-select">
+            <option value="">All sessions</option>
+            {% for agent in agents %}
+            <option value="{{ agent.session_id }}">{{ agent.agent_type }} (PID {{ agent.root_pid }}) - {{ agent.session_id[:12] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="control-group">
+        <label>Time Range</label>
+        <select id="time-range">
+            <option value="1">Last 1 hour</option>
+            <option value="6">Last 6 hours</option>
+            <option value="24" selected>Last 24 hours</option>
+            <option value="168">Last 7 days</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>Category</label>
+        <select id="category-filter">
+            <option value="">All</option>
+            <option value="file_activity">File Activity</option>
+            <option value="process_activity">Process Activity</option>
+            <option value="network_activity">Network Activity</option>
+            <option value="tool_call">Tool Calls</option>
+            <option value="llm_request">LLM Requests</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>Min Severity</label>
+        <select id="severity-filter">
+            <option value="0">All</option>
+            <option value="2">Medium+</option>
+            <option value="3">High+</option>
+            <option value="4">Critical</option>
+        </select>
+    </div>
+    <button class="btn" onclick="runQuery()">Search</button>
+</div>
+
+<div id="forensics-results" class="forensics-results">
+    <p class="empty-state">Select filters and click Search to investigate agent activity.</p>
+</div>
+
+<script>
+async function runQuery() {
+    const session = document.getElementById('session-select').value;
+    const hours = document.getElementById('time-range').value;
+    const category = document.getElementById('category-filter').value;
+    const severity = document.getElementById('severity-filter').value;
+
+    let url = `/api/events?hours=${hours}&limit=500`;
+    if (session) url += `&session_id=${session}`;
+    if (category) url += `&category=${category}`;
+    if (severity) url += `&min_severity=${severity}`;
+
+    const resp = await fetch(url);
+    const data = await resp.json();
+    renderResults(data.events);
+}
+
+function renderResults(events) {
+    const container = document.getElementById('forensics-results');
+    if (!events.length) {
+        container.innerHTML = '<p class="empty-state">No events found for this query.</p>';
+        return;
+    }
+
+    const sevNames = ['INFO', 'LOW', 'MED', 'HIGH', 'CRIT'];
+    const sevClasses = ['info', 'low', 'medium', 'high', 'critical'];
+
+    let html = `<p class="result-count">${events.length} events found</p>`;
+    html += '<table class="events-table"><thead><tr>';
+    html += '<th>Time</th><th>Sev</th><th>Agent</th><th>Action</th><th>Tool</th><th>Details</th><th>Risk</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const e of events) {
+        const sev = e.severity || 0;
+        const ts = new Date(e.timestamp).toLocaleString();
+        let details = e.file_path || e.process_cmdline || e.net_remote_addr || '';
+        if (details.length > 120) details = details.substring(0, 120) + '...';
+
+        html += `<tr class="severity-${sev}">`;
+        html += `<td class="ts">${ts}</td>`;
+        html += `<td><span class="badge badge-${sevClasses[sev]}">${sevNames[sev]}</span></td>`;
+        html += `<td>${e.agent_type || '-'}</td>`;
+        html += `<td>${e.action || ''}</td>`;
+        html += `<td>${e.tool_name || '-'}</td>`;
+        html += `<td class="details" title="${details}">${details}</td>`;
+        html += `<td>${e.risk_score > 0 ? e.risk_score.toFixed(0) : ''}</td>`;
+        html += '</tr>';
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+</script>
+{% endblock %}

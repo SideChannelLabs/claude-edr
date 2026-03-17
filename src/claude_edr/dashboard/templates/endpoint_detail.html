@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title_suffix %} - {{ endpoint.hostname }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+    <a href="/">Endpoints</a> <i class="fa-solid fa-chevron-right sep"></i>
+    <span class="current">{{ endpoint.hostname }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ endpoint.hostname }}</h1>
+    <div class="header-actions">
+        <span class="badge badge-success">Online</span>
+        <span class="badge badge-dim">{{ endpoint.os_name }} {{ endpoint.kernel }}</span>
+        <span class="badge badge-dim">{{ endpoint.cpu_count }} cores / {{ endpoint.memory_total_gb }} GB</span>
+    </div>
+</div>
+
+<!-- AI Agents -->
+<h3 class="section-title">AI Agents</h3>
+<table class="events-table">
+    <thead>
+        <tr>
+            <th class="col-expand"></th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>MCPs</th>
+            <th>Hooks</th>
+            <th>Skills</th>
+            <th>Extensions</th>
+            <th>Alerts</th>
+            <th>Sessions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for agent in agents_inventory %}
+        {% set agent_idx = loop.index %}
+        <tr class="expandable-row" onclick="toggleLevel('agent-{{ agent.agent_type }}', this)">
+            <td class="expand-icon"><i class="fa-solid fa-chevron-right"></i></td>
+            <td>
+                <span class="agent-type-badge {% if agent.agent_type == 'claude_code' %}badge-claude{% elif agent.agent_type == 'cursor' %}badge-cursor{% else %}badge-other{% endif %}">
+                    {{ agent.agent_type | replace('_', ' ') | upper }}
+                </span>
+            </td>
+            <td>
+                {% set running = [] %}
+                {% for session in active_sessions if session.agent_type == agent.agent_type %}
+                    {% if running.append(1) %}{% endif %}
+                {% endfor %}
+                {% if running %}
+                    <span class="badge badge-success">RUNNING</span>
+                {% else %}
+                    <span class="badge badge-dim">INSTALLED</span>
+                {% endif %}
+            </td>
+            <td class="mono">{{ agent.mcp_count }}</td>
+            <td class="mono">{{ agent.hook_count }}</td>
+            <td class="mono">{{ agent.skill_count or 0 }}</td>
+            <td class="mono">{{ agent.extensions|length }}</td>
+            <td class="mono {% if agent.alert_count > 0 %}text-danger{% endif %}">{{ agent.alert_count or 0 }}</td>
+            <td class="mono">
+                {% set sess_count = [] %}
+                {% for session in active_sessions if session.agent_type == agent.agent_type %}
+                    {% if sess_count.append(1) %}{% endif %}
+                {% endfor %}
+                {{ sess_count|length }}
+            </td>
+        </tr>
+        <!-- Expanded: flat tables for MCPs, Hooks, Extensions -->
+        <tr class="level1-detail" id="agent-{{ agent.agent_type }}" style="display:none">
+            <td colspan="9">
+                <div class="level1-content">
+
+                    {% if agent.mcp_servers %}
+                    <h4 class="subsection-title expandable-subsection" onclick="toggleSubsection('mcps-{{ agent.agent_type }}', this); event.stopPropagation();"><i class="fa-solid fa-chevron-right expand-arrow"></i> MCP Servers ({{ agent.mcp_servers|length }})</h4>
+                    <div class="subsection-body" id="mcps-{{ agent.agent_type }}" style="display:none">
+                    <table class="inner-table">
+                        <thead><tr><th>Name</th><th>Description</th><th>Type</th><th>Events</th><th>Alerts</th></tr></thead>
+                        <tbody>
+                            {% for mcp in agent.mcp_servers %}
+                            <tr class="clickable-row {% if loop.index > 5 %}overflow-row-mcp-{{ agent.agent_type }}{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/agent/{{ agent.agent_type }}/mcp/{{ mcp.name | urlencode }}'; event.stopPropagation();">
+                                <td><strong>{{ mcp.name }}</strong>{% if mcp.version %} <span class="badge badge-dim" style="font-size:0.7rem">v{{ mcp.version }}</span>{% endif %}</td>
+                                <td class="details" style="color: var(--text-secondary); font-size: 0.85rem;">{{ mcp.description or '' }}</td>
+                                <td><span class="badge badge-dim">{{ mcp.server_type }}</span></td>
+                                <td class="mono">{{ mcp.event_count or 0 }}</td>
+                                <td class="mono {% if mcp.alert_count > 0 %}text-danger{% endif %}">{{ mcp.alert_count or 0 }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if agent.mcp_servers|length > 5 %}
+                            <tr class="show-more-row" id="show-more-mcp-{{ agent.agent_type }}" onclick="event.stopPropagation();">
+                                <td colspan="5"><a class="show-more-link" onclick="showAll('overflow-row-mcp-{{ agent.agent_type }}', 'show-more-mcp-{{ agent.agent_type }}'); event.stopPropagation();">Show all {{ agent.mcp_servers|length }} MCP servers</a></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% endif %}
+
+                    {% if agent.hooks %}
+                    <h4 class="subsection-title expandable-subsection" onclick="toggleSubsection('hooks-{{ agent.agent_type }}', this); event.stopPropagation();"><i class="fa-solid fa-chevron-right expand-arrow"></i> Hooks ({{ agent.hooks|length }})</h4>
+                    <div class="subsection-body" id="hooks-{{ agent.agent_type }}" style="display:none">
+                    <table class="inner-table">
+                        <thead><tr><th>Event</th><th>Matcher</th><th>Command</th><th>Alerts</th></tr></thead>
+                        <tbody>
+                            {% for hook in agent.hooks %}
+                            <tr class="clickable-row {% if loop.index > 5 %}overflow-row-hook-{{ agent.agent_type }}{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/agent/{{ agent.agent_type }}/hook/{{ loop.index0 }}'; event.stopPropagation();">
+                                <td><span class="badge badge-info">{{ hook.event_type }}</span></td>
+                                <td class="mono">{{ hook.matcher or '*' }}</td>
+                                <td class="mono details">{{ hook.command.split('/')[-1] }}</td>
+                                <td class="mono {% if hook.alert_count > 0 %}text-danger{% endif %}">{{ hook.alert_count or 0 }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if agent.hooks|length > 5 %}
+                            <tr class="show-more-row" id="show-more-hook-{{ agent.agent_type }}" onclick="event.stopPropagation();">
+                                <td colspan="4"><a class="show-more-link" onclick="showAll('overflow-row-hook-{{ agent.agent_type }}', 'show-more-hook-{{ agent.agent_type }}'); event.stopPropagation();">Show all {{ agent.hooks|length }} hooks</a></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% endif %}
+
+                    {% if agent.skills %}
+                    <h4 class="subsection-title expandable-subsection" onclick="toggleSubsection('skills-{{ agent.agent_type }}', this); event.stopPropagation();"><i class="fa-solid fa-chevron-right expand-arrow"></i> Skills ({{ agent.skills|length }})</h4>
+                    <div class="subsection-body" id="skills-{{ agent.agent_type }}" style="display:none">
+                    <table class="inner-table">
+                        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+                        <tbody>
+                            {% for skill in agent.skills %}
+                            <tr class="clickable-row {% if loop.index > 5 %}overflow-row-skill-{{ agent.agent_type }}{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/agent/{{ agent.agent_type }}/skill/{{ skill.name | urlencode }}'; event.stopPropagation();">
+                                <td class="mono">/{{ skill.name }}</td>
+                                <td class="details">{{ skill.description }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if agent.skills|length > 5 %}
+                            <tr class="show-more-row" id="show-more-skill-{{ agent.agent_type }}" onclick="event.stopPropagation();">
+                                <td colspan="2"><a class="show-more-link" onclick="showAll('overflow-row-skill-{{ agent.agent_type }}', 'show-more-skill-{{ agent.agent_type }}'); event.stopPropagation();">Show all {{ agent.skills|length }} skills</a></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% endif %}
+
+                    {% if agent.extensions %}
+                    <h4 class="subsection-title expandable-subsection" onclick="toggleSubsection('ext-{{ agent.agent_type }}', this); event.stopPropagation();"><i class="fa-solid fa-chevron-right expand-arrow"></i> Extensions ({{ agent.extensions|length }})</h4>
+                    <div class="subsection-body" id="ext-{{ agent.agent_type }}" style="display:none">
+                    <table class="inner-table">
+                        <thead><tr><th>Extension ID</th></tr></thead>
+                        <tbody>
+                            {% for ext in agent.extensions %}
+                            <tr class="{% if loop.index > 5 %}overflow-row-ext-{{ agent.agent_type }}{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %}>
+                                <td class="mono">{{ ext }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if agent.extensions|length > 5 %}
+                            <tr class="show-more-row" id="show-more-ext-{{ agent.agent_type }}" onclick="event.stopPropagation();">
+                                <td><a class="show-more-link" onclick="showAll('overflow-row-ext-{{ agent.agent_type }}', 'show-more-ext-{{ agent.agent_type }}'); event.stopPropagation();">Show all {{ agent.extensions|length }} extensions</a></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% endif %}
+
+                    <!-- Sessions for this agent -->
+                    {% set agent_sessions = [] %}
+                    {% for session in active_sessions if session.agent_type == agent.agent_type %}
+                        {% if agent_sessions.append(session) %}{% endif %}
+                    {% endfor %}
+                    {% if agent_sessions %}
+                    <h4 class="subsection-title expandable-subsection" onclick="toggleSubsection('sessions-{{ agent.agent_type }}', this); event.stopPropagation();"><i class="fa-solid fa-chevron-right expand-arrow"></i> Sessions ({{ agent_sessions|length }})</h4>
+                    <div class="subsection-body" id="sessions-{{ agent.agent_type }}" style="display:none">
+                    <table class="inner-table">
+                        <thead><tr><th>PID</th><th>Working Directory</th><th>Events</th><th>Alerts</th><th>Last Activity</th></tr></thead>
+                        <tbody>
+                            {% for session in agent_sessions %}
+                            <tr class="clickable-row {% if loop.index > 5 %}overflow-row-sess-{{ agent.agent_type }}{% endif %}" {% if loop.index > 5 %}style="display:none"{% endif %} onclick="window.location='/session/{{ session.session_id }}'; event.stopPropagation();">
+                                <td class="mono">{{ session.root_pid }}</td>
+                                <td class="details mono">{{ session.working_directory }}</td>
+                                <td class="mono">{{ session.event_count }}</td>
+                                <td class="mono {% if session.alert_count > 0 %}text-danger{% endif %}">{{ session.alert_count }}</td>
+                                <td class="ts">{{ session.last_activity[:19] }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if agent_sessions|length > 5 %}
+                            <tr class="show-more-row" id="show-more-sess-{{ agent.agent_type }}" onclick="event.stopPropagation();">
+                                <td colspan="5"><a class="show-more-link" onclick="showAll('overflow-row-sess-{{ agent.agent_type }}', 'show-more-sess-{{ agent.agent_type }}'); event.stopPropagation();">Show all {{ agent_sessions|length }} sessions</a></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% endif %}
+
+                    {% if not agent.mcp_servers and not agent.hooks and not agent.skills and not agent.extensions and not agent_sessions %}
+                    <p class="text-muted" style="padding:16px 0;">No MCPs, hooks, sessions, or extensions configured.</p>
+                    {% endif %}
+
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not agents_inventory %}
+        <tr><td colspan="9" class="text-muted" style="text-align:center; padding:24px;">No AI coding agents detected.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+
+<script>
+// Track which sections are open
+var openSections = new Set();
+
+function saveState() {
+    location.hash = openSections.size ? 'open=' + Array.from(openSections).join(',') : '';
+}
+
+function toggleLevel(id, clickedRow) {
+    var detail = document.getElementById(id);
+    var icon = clickedRow.querySelector('.expand-icon i');
+    if (detail.style.display === 'none') {
+        detail.style.display = 'table-row';
+        if (icon) { icon.classList.remove('fa-chevron-right'); icon.classList.add('fa-chevron-down'); }
+        openSections.add(id);
+    } else {
+        detail.style.display = 'none';
+        if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-right'); }
+        openSections.delete(id);
+    }
+    saveState();
+}
+
+function expandSection(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    // Could be a table-row (agent detail) or a div (subsection body)
+    if (el.tagName === 'TR') {
+        el.style.display = 'table-row';
+        var prev = el.previousElementSibling;
+        if (prev) {
+            var icon = prev.querySelector('.expand-icon i');
+            if (icon) { icon.classList.remove('fa-chevron-right'); icon.classList.add('fa-chevron-down'); }
+        }
+    } else {
+        el.style.display = 'block';
+        var prev = el.previousElementSibling;
+        if (prev) {
+            var arrow = prev.querySelector('.expand-arrow');
+            if (arrow) { arrow.classList.remove('fa-chevron-right'); arrow.classList.add('fa-chevron-down'); }
+        }
+    }
+    openSections.add(id);
+}
+
+function toggleSubsection(id, header) {
+    var body = document.getElementById(id);
+    var arrow = header.querySelector('.expand-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (arrow) { arrow.classList.remove('fa-chevron-right'); arrow.classList.add('fa-chevron-down'); }
+        openSections.add(id);
+    } else {
+        body.style.display = 'none';
+        if (arrow) { arrow.classList.remove('fa-chevron-down'); arrow.classList.add('fa-chevron-right'); }
+        openSections.delete(id);
+    }
+    saveState();
+}
+
+function showAll(cls, moreId) {
+    document.querySelectorAll('.' + cls).forEach(function(r) { r.style.display = 'table-row'; });
+    var m = document.getElementById(moreId);
+    if (m) m.style.display = 'none';
+}
+
+// Restore state from hash on page load
+(function() {
+    var hash = location.hash.replace('#', '');
+    if (!hash.startsWith('open=')) return;
+    var ids = hash.replace('open=', '').split(',');
+    ids.forEach(function(id) {
+        if (id) expandSection(id);
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,205 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — High-value credential theft
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: FILE-003
+    name: Browser credential access
+    description: >
+      Process accessing browser credential stores (cookies, saved passwords,
+      login data). This is a classic infostealer pattern.
+    severity: CRITICAL
+    tags: [file, credential_theft, infostealer]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [read, open]
+      - any_of:
+          - field: file.path
+            pattern: "\\.config/google-chrome/.*/Cookies"
+          - field: file.path
+            pattern: "\\.config/google-chrome/.*/Login Data"
+          - field: file.path
+            pattern: "\\.mozilla/firefox/.*/cookies\\.sqlite"
+          - field: file.path
+            pattern: "\\.mozilla/firefox/.*/logins\\.json"
+          - field: file.path
+            pattern: "\\.config/chromium/.*/Cookies"
+          - field: file.path
+            contains: "Login Data"
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Credential and config access
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: FILE-001
+    name: SSH key access
+    description: >
+      File operation on SSH private keys or authorized_keys. Reading SSH keys
+      enables lateral movement; writing authorized_keys enables persistence.
+    severity: HIGH
+    tags: [file, ssh, credential_access, lateral_movement]
+    conditions:
+      - field: category
+        equals: file_activity
+      - any_of:
+          - field: file.path
+            pattern: "\\.ssh/id_(rsa|ed25519|ecdsa|dsa)"
+          - field: file.path
+            contains: ".ssh/authorized_keys"
+          - field: file.path
+            contains: ".ssh/config"
+
+  - id: FILE-002
+    name: AWS credential file access
+    description: >
+      File operation on AWS credential or config files. Could be
+      harvesting cloud access keys for exfiltration.
+    severity: HIGH
+    tags: [file, aws, credential_access, cloud]
+    conditions:
+      - field: category
+        equals: file_activity
+      - any_of:
+          - field: file.path
+            contains: ".aws/credentials"
+          - field: file.path
+            contains: ".aws/config"
+          - field: file.path
+            contains: ".boto"
+
+  - id: FILE-004
+    name: Agent config file modification
+    description: >
+      Write operation to AI agent configuration files. Could be adding
+      malicious MCP servers, changing permissions, or disabling security.
+    severity: HIGH
+    tags: [file, config_tamper, self_modify]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [write, create, modify]
+      - any_of:
+          - field: file.path
+            contains: ".claude.json"
+          - field: file.path
+            contains: ".claude/settings.json"
+          - field: file.path
+            pattern: "\\.cursor/(mcp|settings)\\.json"
+          - field: file.path
+            contains: ".cursorrules"
+
+  - id: FILE-006
+    name: Systemd unit creation
+    description: >
+      New systemd service unit created. This is a persistence mechanism
+      that ensures malicious code survives reboots.
+    severity: HIGH
+    tags: [file, persistence, systemd]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [write, create]
+      - any_of:
+          - field: file.path
+            pattern: "\\.config/systemd/user/.*\\.service"
+          - field: file.path
+            pattern: "/etc/systemd/system/.*\\.service"
+          - field: file.path
+            pattern: "\\.config/systemd/user/.*\\.timer"
+
+  - id: FILE-007
+    name: Hosts file modification
+    description: >
+      Write to /etc/hosts. Can redirect DNS resolution to attacker-controlled
+      IPs, enabling credential phishing or API hijacking.
+    severity: HIGH
+    tags: [file, dns_hijack, config_tamper]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [write, modify]
+      - field: file.path
+        equals: "/etc/hosts"
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Suspicious file operations
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: FILE-005
+    name: Shell dotfile modification
+    description: >
+      Write to shell configuration dotfiles. Code added here runs on
+      every new shell, enabling persistence without cron or systemd.
+    severity: MEDIUM
+    tags: [file, persistence, dotfile]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [write, modify, append]
+      - any_of:
+          - field: file.path
+            pattern: "/\\.(bashrc|zshrc|profile|bash_profile|zprofile)$"
+          - field: file.path
+            contains: ".bash_logout"
+
+  - id: FILE-008
+    name: Sensitive directory access
+    description: >
+      File operations in system directories or other users' home directories
+      that are outside the agent's normal working scope.
+    severity: MEDIUM
+    tags: [file, recon, boundary_violation]
+    conditions:
+      - field: category
+        equals: file_activity
+      - any_of:
+          - field: file.path
+            starts_with: "/etc/"
+          - field: file.path
+            starts_with: "/root/"
+          - field: file.path
+            pattern: "^/home/"
+
+  - id: FILE-009
+    name: Large file read
+    description: >
+      Reading a file larger than 10MB. Could be staging data for
+      exfiltration or accessing database dumps.
+    severity: MEDIUM
+    tags: [file, exfiltration_prep, large_file]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [read, open]
+      - field: file.size
+        greater_than: 10485760
+
+  - id: FILE-010
+    name: Binary file creation
+    description: >
+      Creation of shared libraries, executables, or other binary artifacts
+      in project directories. May indicate dropped malware.
+    severity: MEDIUM
+    tags: [file, malware, binary_drop]
+    conditions:
+      - field: category
+        equals: file_activity
+      - field: file.operation
+        in: [write, create]
+      - any_of:
+          - field: file.path
+            ends_with: ".so"
+          - field: file.path
+            ends_with: ".dylib"
+          - field: file.path
+            ends_with: ".dll"
+          - field: file.path
+            pattern: "\\.so\\.[0-9]"

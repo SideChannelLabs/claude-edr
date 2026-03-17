@@ -1,0 +1,144 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — Data leaking to LLM providers
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: LLM-001
+    name: Credentials in LLM context
+    description: >
+      API keys, AWS access keys, tokens, or other credentials detected
+      in the conversation context being sent to the LLM provider.
+      These credentials are now exposed to a third-party service.
+    severity: CRITICAL
+    tags: [llm, credential_leak, data_loss]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.contains_credentials
+        equals: true
+
+  - id: LLM-005
+    name: Tool use with credentials in context
+    description: >
+      LLM request includes both tool access AND credentials in context.
+      Maximum exfiltration risk — the model can use tools to send
+      credentials to external services.
+    severity: CRITICAL
+    tags: [llm, credential_leak, tool_abuse, exfiltration]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.has_tools
+        equals: true
+      - field: llm.contains_credentials
+        equals: true
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Significant data exposure risk
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: LLM-002
+    name: PII in LLM context
+    description: >
+      Personally identifiable information (SSN, credit card numbers,
+      phone numbers, addresses) detected in data sent to LLM provider.
+    severity: HIGH
+    tags: [llm, pii, data_loss, compliance]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.contains_pii
+        equals: true
+
+  - id: LLM-004
+    name: Unknown LLM endpoint
+    description: >
+      LLM API calls going to an unrecognized endpoint. Could indicate
+      a proxy, man-in-the-middle, or rogue LLM service intercepting
+      agent traffic.
+    severity: HIGH
+    tags: [llm, suspicious_endpoint, mitm]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.endpoint
+        exists: true
+      - field: llm.endpoint
+        not_contains: "api.anthropic.com"
+      - field: llm.endpoint
+        not_contains: "api.openai.com"
+      - field: llm.endpoint
+        not_contains: "generativelanguage.googleapis.com"
+      - field: llm.endpoint
+        not_contains: "localhost"
+      - field: llm.endpoint
+        not_contains: "127.0.0.1"
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Anomalous behavior, investigate
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: LLM-003
+    name: Anomalous token output
+    description: >
+      Single LLM response exceeding 50,000 tokens. Could indicate
+      data exfiltration via model output, prompt injection causing
+      information dump, or runaway generation.
+    severity: MEDIUM
+    tags: [llm, anomaly, exfiltration]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: action
+        equals: llm_response_received
+      - field: llm.tokens_out
+        greater_than: 50000
+
+  - id: LLM-007
+    name: Non-standard LLM provider
+    description: >
+      LLM traffic going to an unrecognized provider. May be legitimate
+      (self-hosted models) or indicate unauthorized AI service usage.
+    severity: MEDIUM
+    tags: [llm, unknown_provider]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.provider
+        exists: true
+      - field: llm.provider
+        not_in: [anthropic, openai, google, codeium, amazon, mistral, cohere, ""]
+
+  - id: LLM-006
+    name: Excessive tool count in request
+    description: >
+      LLM request includes more than 40 tools. Unusual for normal
+      operation and may indicate MCP server tool flooding or
+      prompt injection expanding the tool surface.
+    severity: MEDIUM
+    tags: [llm, anomaly, mcp]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.has_tools
+        equals: true
+      - field: llm.tool_names
+        pattern: "^(?:[^,]*,){40,}"
+
+  # ═══════════════════════════════════════════════════════════════
+  # LOW — Informational
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: LLM-008
+    name: Large token input
+    description: >
+      LLM request with unusually large input context (>100K tokens).
+      May indicate entire codebases or databases being sent to the model.
+    severity: LOW
+    tags: [llm, anomaly, data_exposure]
+    conditions:
+      - field: category
+        equals: llm_request
+      - field: llm.tokens_in
+        greater_than: 100000

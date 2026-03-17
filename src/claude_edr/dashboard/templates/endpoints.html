@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Endpoints{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Endpoints</h1>
+    <div class="header-actions">
+        <span class="badge badge-success">1 Endpoint</span>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" hx-get="/htmx/stats" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "partials/stats_cards.html" %}
+</div>
+
+<!-- This Endpoint -->
+<div class="endpoint-card">
+    <div class="endpoint-header">
+        <div class="endpoint-title">
+            <span class="status-dot status-online"></span>
+            <h2>{{ endpoint.hostname }}</h2>
+            <span class="badge badge-info">{{ endpoint.os_name }} {{ endpoint.kernel }}</span>
+        </div>
+        <div class="endpoint-meta">
+            <span>{{ endpoint.ip_addresses|join(', ') }}</span>
+            <span>{{ endpoint.cpu_count }} cores</span>
+            <span>{{ endpoint.memory_total_gb }} GB RAM</span>
+            <span>User: {{ endpoint.username }}</span>
+        </div>
+    </div>
+
+    <!-- Installed AI Agents -->
+    <h3 class="section-title">AI Agents Installed</h3>
+    <div class="agents-grid">
+        {% for agent in agents_inventory %}
+        <a href="/agent/{{ agent.agent_type }}" class="agent-card clickable">
+            <div class="agent-header">
+                <span class="agent-type-badge {% if agent.agent_type == 'claude_code' %}badge-claude{% elif agent.agent_type == 'cursor' %}badge-cursor{% else %}badge-other{% endif %}">
+                    {{ agent.agent_type | replace('_', ' ') | upper }}
+                </span>
+                {% set running = [] %}
+                {% for session in active_sessions if session.agent_type == agent.agent_type %}
+                    {% if running.append(1) %}{% endif %}
+                {% endfor %}
+                {% if running %}
+                    <span class="badge badge-success">RUNNING</span>
+                {% else %}
+                    <span class="badge badge-dim">INSTALLED</span>
+                {% endif %}
+            </div>
+            <div class="agent-stats-row">
+                <div class="mini-stat">
+                    <span class="mini-stat-value">{{ agent.mcp_count }}</span>
+                    <span class="mini-stat-label">MCPs</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="mini-stat-value">{{ agent.hook_count }}</span>
+                    <span class="mini-stat-label">Hooks</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="mini-stat-value">{{ agent.extensions|length }}</span>
+                    <span class="mini-stat-label">Extensions</span>
+                </div>
+            </div>
+            <div class="agent-config-path">{{ agent.config_path }}</div>
+            <div class="drill-down-hint">Click to drill down <i class="fa-solid fa-arrow-right"></i></div>
+        </a>
+        {% endfor %}
+
+        {% if not agents_inventory %}
+        <div class="empty-state">
+            <p>No AI coding agents detected on this endpoint.</p>
+            <p>Install Claude Code, Cursor, Codex, or Windsurf to start monitoring.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Active Sessions -->
+    {% if active_sessions %}
+    <h3 class="section-title">Active Sessions</h3>
+    <table class="events-table">
+        <thead>
+            <tr>
+                <th>Agent</th>
+                <th>PID</th>
+                <th>Working Directory</th>
+                <th>Events</th>
+                <th>Alerts</th>
+                <th>Last Activity</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for session in active_sessions %}
+            <tr>
+                <td><span class="agent-type-badge small">{{ session.agent_type | replace('_', ' ') }}</span></td>
+                <td class="mono">{{ session.root_pid }}</td>
+                <td class="details" title="{{ session.working_directory }}">{{ session.working_directory }}</td>
+                <td class="mono">{{ session.event_count }}</td>
+                <td class="{% if session.alert_count > 0 %}text-danger{% endif %}">{{ session.alert_count }}</td>
+                <td class="ts">{{ session.last_activity[:19] }}</td>
+                <td><a href="/session/{{ session.session_id }}" class="btn btn-sm">Investigate</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

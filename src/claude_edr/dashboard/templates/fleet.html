@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Fleet{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Endpoints</h1>
+    <div class="header-actions">
+        <span class="badge badge-info">{{ endpoints|length }} Endpoint{{ 's' if endpoints|length != 1 }}</span>
+    </div>
+</div>
+
+<!-- Fleet Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ endpoints|length }}</div>
+        <div class="stat-label">Endpoints</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.active_sessions or 0 }}</div>
+        <div class="stat-label">Active Sessions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total_events_24h or 0 }}</div>
+        <div class="stat-label">Events (24h)</div>
+    </div>
+    <div class="stat-card {% if stats.open_alerts %}stat-danger{% endif %}">
+        <div class="stat-number">{{ stats.open_alerts or 0 }}</div>
+        <div class="stat-label">Open Alerts</div>
+    </div>
+</div>
+
+<!-- Endpoints Table -->
+{% if endpoints %}
+<table class="events-table">
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Hostname</th>
+            <th>OS</th>
+            <th>IP Address</th>
+            <th>User</th>
+            <th>Agents</th>
+            <th>Sessions</th>
+            <th>Alerts</th>
+            <th>CPU</th>
+            <th>RAM</th>
+            <th>Last Seen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ep in endpoints %}
+        <tr class="clickable-row" onclick="window.location='/endpoint/{{ ep.id }}'">
+            <td>
+                <span class="status-dot {% if ep.status == 'online' %}status-online{% else %}status-offline{% endif %}"></span>
+            </td>
+            <td class="mono"><strong>{{ ep.hostname }}</strong></td>
+            <td>{{ ep.os_name }} {{ ep.kernel }}</td>
+            <td class="mono">{{ ep.ip_addresses|join(', ') if ep.ip_addresses else '-' }}</td>
+            <td>{{ ep.username }}</td>
+            <td class="mono">{{ ep.agent_count or 0 }}</td>
+            <td class="mono">{{ ep.active_sessions or 0 }}</td>
+            <td class="mono {% if ep.total_alerts %}text-danger{% endif %}">{{ ep.total_alerts or 0 }}</td>
+            <td class="mono">{{ ep.cpu_count or 0 }}</td>
+            <td class="mono">{{ ep.memory_total_gb or 0 }} GB</td>
+            <td class="ts">{{ ep.last_heartbeat[:19] if ep.last_heartbeat else '-' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No endpoints registered yet.</p>
+    <p>Deploy the Claude EDR sensor on your machines to start monitoring.</p>
+</div>
+{% endif %}
+{% endblock %}

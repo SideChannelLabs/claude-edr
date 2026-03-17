@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title_suffix %} - LLM Traffic{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">LLM Traffic</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>LLM API Traffic</h1>
+    <p class="subtitle">SSL-intercepted requests and responses to LLM providers</p>
+</div>
+
+<!-- Stats row -->
+<div class="stats-row" style="display:flex;gap:16px;margin-bottom:20px">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_calls }}</div>
+        <div class="stat-label">Total Calls</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_responses }}</div>
+        <div class="stat-label">Responses</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.providers|join(', ') or 'None' }}</div>
+        <div class="stat-label">Providers</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.models|join(', ') or 'None' }}</div>
+        <div class="stat-label">Models</div>
+    </div>
+    <div class="stat-card {% if stats.credential_exposures > 0 %}stat-danger{% endif %}">
+        <div class="stat-value">{{ stats.credential_exposures }}</div>
+        <div class="stat-label">Auth Headers Seen</div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar" style="margin-bottom:16px;display:flex;gap:8px;align-items:center">
+    <label>Provider:</label>
+    <select id="filter-provider" onchange="filterLLM()">
+        <option value="">All</option>
+        {% for p in stats.providers %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+    </select>
+    <label>Direction:</label>
+    <select id="filter-direction" onchange="filterLLM()">
+        <option value="">All</option>
+        <option value="llm_call">Requests</option>
+        <option value="llm_response">Responses</option>
+    </select>
+    <label>Hours:</label>
+    <select id="filter-hours" onchange="filterLLM()">
+        <option value="1">1h</option>
+        <option value="6" selected>6h</option>
+        <option value="24">24h</option>
+        <option value="168">7d</option>
+    </select>
+</div>
+
+<!-- Events table -->
+<table class="events-table" id="llm-table">
+    <thead>
+        <tr>
+            <th>Time</th>
+            <th>Dir</th>
+            <th>Agent</th>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Endpoint</th>
+            <th>Tokens</th>
+            <th>Tools</th>
+            <th>Creds</th>
+            <th>Severity</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr class="severity-{{ e.severity or 0 }} expandable-row" data-provider="{{ e.llm_provider or '' }}" data-action="{{ e.action }}" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'table-row' : 'none'">
+            <td class="ts">{{ e.timestamp[:19] }}</td>
+            <td>{% if e.action == 'llm_call' %}<span class="badge badge-info">REQ</span>{% else %}<span class="badge badge-low">RES</span>{% endif %}</td>
+            <td>{{ e.agent_type or '-' }}</td>
+            <td>{{ e.llm_provider or '-' }}</td>
+            <td class="mono">{{ e.llm_model or '-' }}</td>
+            <td class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">{{ e.net_domain or '' }}</td>
+            <td class="mono">{% if e.llm_tokens_in or e.llm_tokens_out %}{{ e.llm_tokens_in or 0 }}/{{ e.llm_tokens_out or 0 }}{% else %}-{% endif %}</td>
+            <td>{{ 'Yes' if e.llm_has_tools else '-' }}</td>
+            <td class="{% if e.llm_contains_credentials %}text-danger{% endif %}">{{ 'YES' if e.llm_contains_credentials else '-' }}</td>
+            <td><span class="badge severity-badge-{{ e.severity or 0 }}">{{ ['INFO','LOW','MED','HIGH','CRIT'][e.severity or 0] }}</span></td>
+        </tr>
+        <tr style="display:none">
+            <td colspan="10">
+                <pre class="event-detail" style="max-height:400px;overflow:auto;white-space:pre-wrap;font-size:12px;background:#1a1a2e;padding:10px;border-radius:4px;margin:4px 0">{{ e.tool_input_json or e.tool_response_json or 'No captured data' }}</pre>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not events %}
+<div class="empty-state">
+    <p>No LLM traffic captured yet.</p>
+    <p class="text-muted">Ensure <code>[ssl_capture] enabled = true</code> in your config and restart the daemon with root.</p>
+</div>
+{% endif %}
+
+<script>
+function filterLLM() {
+    const provider = document.getElementById('filter-provider').value.toLowerCase();
+    const direction = document.getElementById('filter-direction').value;
+    const rows = document.querySelectorAll('#llm-table tbody tr.expandable-row');
+    rows.forEach(row => {
+        const rp = (row.dataset.provider || '').toLowerCase();
+        const ra = row.dataset.action || '';
+        const showProvider = !provider || rp === provider;
+        const showDir = !direction || ra === direction;
+        row.style.display = (showProvider && showDir) ? '' : 'none';
+        // Hide detail row too
+        if (row.nextElementSibling) row.nextElementSibling.style.display = 'none';
+    });
+}
+</script>
+{% endblock %}

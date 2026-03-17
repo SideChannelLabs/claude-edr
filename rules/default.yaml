@@ -1,0 +1,175 @@
+# Claude EDR - Default Detection Rules
+# These rules ship with the product and detect common AI agent threats.
+
+rules:
+  - id: ssh_key_access
+    name: Agent reading SSH private keys
+    description: AI agent attempted to read SSH private key files
+    severity: critical
+    tags: [credential_access, ssh]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.ssh/(id_rsa|id_ed25519|id_ecdsa|id_dsa)$"
+      - field: action
+        in: [file_read, tool_invoke]
+
+  - id: ssh_key_write
+    name: Agent modifying SSH keys
+    description: AI agent attempted to write to SSH key files
+    severity: critical
+    tags: [credential_access, ssh, persistence]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.ssh/(authorized_keys|id_rsa|id_ed25519)"
+      - field: action
+        in: [file_write, file_create]
+
+  - id: env_file_read
+    name: Agent reading .env files
+    description: AI agent reading environment files that may contain secrets
+    severity: high
+    tags: [credential_access, env]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.env(\\..*)?$"
+      - field: action
+        in: [file_read, tool_invoke]
+
+  - id: aws_credentials_access
+    name: Agent accessing AWS credentials
+    description: AI agent attempted to read AWS credential files
+    severity: critical
+    tags: [credential_access, aws]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.aws/credentials$"
+
+  - id: kube_config_access
+    name: Agent accessing Kubernetes config
+    description: AI agent reading kubeconfig with cluster credentials
+    severity: critical
+    tags: [credential_access, kubernetes]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.kube/config$"
+
+  - id: curl_pipe_bash
+    name: Curl piped to shell execution
+    description: Agent executing curl|bash pattern - common malware delivery
+    severity: critical
+    tags: [execution, download_and_execute]
+    conditions:
+      - field: process.cmdline
+        pattern: "curl\\s.*\\|\\s*(ba)?sh"
+
+  - id: wget_pipe_bash
+    name: Wget piped to shell execution
+    description: Agent executing wget|bash pattern - common malware delivery
+    severity: critical
+    tags: [execution, download_and_execute]
+    conditions:
+      - field: process.cmdline
+        pattern: "wget\\s.*\\|\\s*(ba)?sh"
+
+  - id: base64_decode_exec
+    name: Base64 decode piped to shell
+    description: Agent decoding and executing obfuscated commands
+    severity: critical
+    tags: [execution, obfuscation]
+    conditions:
+      - field: process.cmdline
+        pattern: "base64\\s+-d.*\\|\\s*(ba)?sh"
+
+  - id: reverse_shell
+    name: Reverse shell pattern detected
+    description: Agent creating a reverse shell connection
+    severity: critical
+    tags: [execution, reverse_shell, c2]
+    conditions:
+      - field: process.cmdline
+        pattern: "(bash\\s+-i\\s+>&\\s*/dev/tcp/|nc\\s+-[le]|python.*socket.*connect)"
+
+  - id: destructive_rm
+    name: Destructive recursive delete
+    description: Agent attempting to recursively delete from root or home
+    severity: critical
+    tags: [destruction, filesystem]
+    conditions:
+      - field: process.cmdline
+        pattern: "rm\\s+-rf\\s+(/|~|\\$HOME)"
+
+  - id: force_push
+    name: Git force push detected
+    description: Agent force-pushing to a git remote
+    severity: high
+    tags: [git, destructive]
+    conditions:
+      - field: process.cmdline
+        pattern: "git\\s+push\\s+.*--force"
+
+  - id: git_hard_reset
+    name: Git hard reset detected
+    description: Agent performing git reset --hard which discards changes
+    severity: medium
+    tags: [git, destructive]
+    conditions:
+      - field: process.cmdline
+        pattern: "git\\s+reset\\s+--hard"
+
+  - id: privileged_container
+    name: Privileged Docker container
+    description: Agent running a Docker container with --privileged flag
+    severity: high
+    tags: [container, privilege_escalation]
+    conditions:
+      - field: process.cmdline
+        pattern: "docker\\s+run\\s+.*--privileged"
+
+  - id: passwd_shadow_access
+    name: System auth file access
+    description: Agent reading system authentication files
+    severity: critical
+    tags: [credential_access, system]
+    conditions:
+      - field: file.path
+        pattern: "/etc/(passwd|shadow|sudoers)"
+
+  - id: netrc_access
+    name: Agent reading .netrc credentials
+    description: AI agent accessing .netrc file containing plaintext credentials
+    severity: critical
+    tags: [credential_access, netrc]
+    conditions:
+      - field: file.path
+        pattern: ".*\\.netrc$"
+
+  - id: MCP-001
+    name: MCP tool returned credentials
+    description: An MCP server tool returned data containing credential patterns (API keys, passwords, tokens). This could indicate an MCP tool is exfiltrating or exposing sensitive credentials.
+    severity: critical
+    tags: [mcp, credential_access, data_exfiltration]
+    conditions:
+      - field: tool_name
+        starts_with: "mcp__"
+      - field: action
+        equals: "tool_complete"
+      - field: tool_response_json
+        pattern: "(AWS_ACCESS_KEY|AWS_SECRET|API_KEY|SECRET_KEY|PRIVATE_KEY|PASSWORD|TOKEN|CREDENTIAL)"
+
+  - id: chmod_world_writable
+    name: Setting world-writable permissions
+    description: Agent setting 777 permissions on files
+    severity: high
+    tags: [filesystem, permissions]
+    conditions:
+      - field: process.cmdline
+        pattern: "chmod\\s+777"
+
+  - id: suid_bit
+    name: Setting SUID bit
+    description: Agent setting SUID bit which enables privilege escalation
+    severity: critical
+    tags: [privilege_escalation, permissions]
+    conditions:
+      - field: process.cmdline
+        pattern: "chmod\\s+\\+s"

@@ -1,0 +1,307 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — Immediate threat, likely malicious
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: TC-001
+    name: Destructive shell command
+    description: >
+      Agent executing a destructive command that could wipe files or crash the system.
+      Includes rm -rf on root/home, disk formatting, fork bombs, and kernel panics.
+    severity: CRITICAL
+    tags: [tool_call, bash, destructive]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "rm\\s+(-[a-zA-Z]*f[a-zA-Z]*\\s+)?(/|~|\\$HOME)"
+          - field: agent.tool_input
+            pattern: "mkfs\\."
+          - field: agent.tool_input
+            pattern: "dd\\s+if=.*of=/dev/"
+          - field: agent.tool_input
+            pattern: ":\\(\\)\\s*\\{\\s*:\\|:\\s*&\\s*\\}"
+          - field: agent.tool_input
+            contains: "> /dev/sda"
+          - field: agent.tool_input
+            contains: "echo c > /proc/sysrq-trigger"
+
+  - id: TC-002
+    name: Reverse shell via Bash tool
+    description: >
+      Agent attempting to establish a reverse shell connection through the Bash tool.
+      This is an unambiguous indicator of compromise.
+    severity: CRITICAL
+    tags: [tool_call, bash, reverse_shell, c2]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "bash\\s+-i\\s+>(&|\\s)\\s*/dev/tcp/"
+          - field: agent.tool_input
+            pattern: "nc\\s+.*-e\\s+/bin/(ba)?sh"
+          - field: agent.tool_input
+            pattern: "ncat\\s+.*-e\\s+/bin/(ba)?sh"
+          - field: agent.tool_input
+            pattern: "socat\\s+.*exec.*sh"
+          - field: agent.tool_input
+            pattern: "mkfifo\\s+.*\\|.*nc\\s+"
+          - field: agent.tool_input
+            pattern: "python[23]?\\s+-c\\s+['\"]import\\s+socket"
+          - field: agent.tool_input
+            pattern: "perl\\s+-e\\s+.*socket.*connect"
+
+  - id: TC-012
+    name: Disable security controls
+    description: >
+      Agent attempting to disable or bypass security mechanisms including
+      permission checks, git hooks, firewalls, or EDR monitoring.
+    severity: CRITICAL
+    tags: [tool_call, evasion, security_bypass]
+    conditions:
+      - field: category
+        equals: tool_call
+      - any_of:
+          - field: agent.tool_input
+            contains: "--dangerously-skip-permissions"
+          - field: agent.tool_input
+            contains: "dangerouslyDisableSandbox"
+          - field: agent.tool_input
+            pattern: "ufw\\s+(disable|allow)"
+          - field: agent.tool_input
+            pattern: "iptables\\s+-F"
+          - field: agent.tool_input
+            pattern: "setenforce\\s+0"
+          - field: agent.tool_input
+            pattern: "systemctl\\s+(stop|disable)\\s+.*edr"
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Dangerous capabilities, likely unauthorized
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: TC-003
+    name: Curl pipe to shell
+    description: >
+      Agent downloading and executing code in a single pipeline. Classic
+      supply-chain attack vector — the downloaded payload is never inspected.
+    severity: HIGH
+    tags: [tool_call, bash, download_exec]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "curl\\s+.*\\|\\s*(ba)?sh"
+          - field: agent.tool_input
+            pattern: "wget\\s+.*\\|\\s*(ba)?sh"
+          - field: agent.tool_input
+            pattern: "curl\\s+.*-o\\s+/tmp/.*&&.*sh\\s+/tmp/"
+          - field: agent.tool_input
+            pattern: "wget\\s+-O\\s*-\\s+.*\\|\\s*(ba)?sh"
+
+  - id: TC-004
+    name: Credential file write
+    description: >
+      Agent writing to credential storage files. Could be planting backdoor
+      credentials, overwriting existing auth, or exfiltrating secrets.
+    severity: HIGH
+    tags: [tool_call, credential_access, persistence]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: action
+        in: [tool_invoke, tool_complete]
+      - field: agent.tool_name
+        in: [Write, Edit, Bash]
+      - any_of:
+          - field: agent.tool_input
+            pattern: "\\.ssh/(authorized_keys|id_rsa|id_ed25519|config)"
+          - field: agent.tool_input
+            pattern: "\\.aws/(credentials|config)"
+          - field: agent.tool_input
+            contains: ".netrc"
+          - field: agent.tool_input
+            pattern: "\\.gnupg/"
+
+  - id: TC-005
+    name: Shell config tampering
+    description: >
+      Agent modifying shell configuration files or cron jobs. This is a
+      persistence mechanism — code injected here runs on every shell start
+      or on a schedule.
+    severity: HIGH
+    tags: [tool_call, persistence, config_tamper]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        in: [Write, Edit, Bash]
+      - any_of:
+          - field: agent.tool_input
+            pattern: "\\.(bashrc|zshrc|profile|bash_profile|zprofile)"
+          - field: agent.tool_input
+            contains: "crontab"
+          - field: agent.tool_input
+            pattern: "/etc/cron\\."
+          - field: agent.tool_input
+            pattern: "\\.config/autostart/"
+          - field: agent.tool_input
+            pattern: "\\.config/systemd/user/"
+          - field: agent.tool_input
+            pattern: "LaunchAgents/"
+
+  - id: TC-006
+    name: Agent config modification
+    description: >
+      Agent modifying its own configuration files — MCP server lists,
+      permission settings, or hook definitions. Could be self-replication,
+      permission escalation, or EDR evasion.
+    severity: HIGH
+    tags: [tool_call, config_tamper, self_modify]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        in: [Write, Edit]
+      - any_of:
+          - field: agent.tool_input
+            contains: ".claude.json"
+          - field: agent.tool_input
+            contains: ".claude/settings.json"
+          - field: agent.tool_input
+            pattern: "\\.cursor/(mcp|settings)\\.json"
+          - field: agent.tool_input
+            contains: ".cursorrules"
+          - field: agent.tool_input
+            pattern: "CLAUDE\\.md"
+
+  - id: TC-009
+    name: Sudo execution
+    description: >
+      Agent executing commands with sudo. AI coding agents should never
+      need root privileges during normal operation.
+    severity: HIGH
+    tags: [tool_call, bash, privilege_escalation]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "^sudo\\s+"
+          - field: agent.tool_input
+            pattern: "\\|\\s*sudo\\s+"
+          - field: agent.tool_input
+            pattern: "&&\\s*sudo\\s+"
+
+  - id: TC-011
+    name: Obfuscated command execution
+    description: >
+      Agent running commands with encoded or obfuscated payloads.
+      Legitimate tools don't need to hide their commands behind base64
+      or hex encoding.
+    severity: HIGH
+    tags: [tool_call, bash, obfuscation]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "base64\\s+(-d|--decode)\\s*\\|"
+          - field: agent.tool_input
+            pattern: "eval\\s+\\$\\(echo\\s+"
+          - field: agent.tool_input
+            pattern: "echo\\s+.*\\|\\s*base64\\s+-d\\s*\\|\\s*(ba)?sh"
+          - field: agent.tool_input
+            pattern: "\\$'\\\\x[0-9a-fA-F]{2}"
+          - field: agent.tool_input
+            pattern: "python[23]?\\s+-c\\s+.*__import__.*exec.*decode"
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Suspicious, investigate
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: TC-007
+    name: Destructive git operation
+    description: >
+      Agent performing destructive git operations that can cause data loss
+      including force push, hard reset, or branch deletion.
+    severity: MEDIUM
+    tags: [tool_call, bash, git, destructive]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "git\\s+push\\s+.*(-f|--force)"
+          - field: agent.tool_input
+            pattern: "git\\s+reset\\s+--hard"
+          - field: agent.tool_input
+            pattern: "git\\s+clean\\s+-[a-zA-Z]*f"
+          - field: agent.tool_input
+            pattern: "git\\s+branch\\s+-D"
+          - field: agent.tool_input
+            pattern: "git\\s+checkout\\s+--\\s+\\."
+
+  - id: TC-008
+    name: Package install without lockfile
+    description: >
+      Agent installing packages directly rather than from a lockfile.
+      This can introduce supply chain risks through typosquatting or
+      dependency confusion.
+    severity: MEDIUM
+    tags: [tool_call, bash, supply_chain]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Bash
+      - any_of:
+          - field: agent.tool_input
+            pattern: "npm\\s+install\\s+(?!.*--save-dev)[a-z@]"
+          - field: agent.tool_input
+            pattern: "pip\\s+install\\s+[a-z]"
+          - field: agent.tool_input
+            pattern: "npx\\s+[a-z@]"
+
+  - id: TC-010
+    name: Sensitive file read
+    description: >
+      Agent reading sensitive system or credential files that are not
+      normally needed for software development.
+    severity: MEDIUM
+    tags: [tool_call, credential_access, recon]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        equals: Read
+      - any_of:
+          - field: agent.tool_input
+            contains: "/etc/shadow"
+          - field: agent.tool_input
+            contains: "/etc/passwd"
+          - field: agent.tool_input
+            pattern: "\\.ssh/id_(rsa|ed25519|ecdsa)"
+          - field: agent.tool_input
+            pattern: "\\.aws/credentials"
+          - field: agent.tool_input
+            pattern: "\\.gnupg/"
+          - field: agent.tool_input
+            pattern: "\\.kube/config"
+          - field: agent.tool_input
+            contains: ".env"

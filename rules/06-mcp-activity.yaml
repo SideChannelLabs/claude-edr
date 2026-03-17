@@ -1,0 +1,139 @@
+rules:
+
+  # ═══════════════════════════════════════════════════════════════
+  # CRITICAL — MCP servers acting maliciously
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: MCP-002
+    name: MCP tool accessing credentials
+    description: >
+      An MCP server tool is accessing or manipulating credential data.
+      MCP servers can see full conversation context and use this to
+      harvest secrets from the agent's environment.
+    severity: CRITICAL
+    tags: [mcp, credential_access, exfiltration]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - any_of:
+          - field: agent.tool_input
+            pattern: "(AKIA|aws_secret|aws_access|sk-|ghp_|gho_)"
+          - field: agent.tool_input
+            pattern: "-----BEGIN.*KEY"
+          - field: agent.tool_input
+            pattern: "password|secret|token|api.?key"
+
+  # ═══════════════════════════════════════════════════════════════
+  # HIGH — Dangerous MCP tool behavior
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: MCP-001
+    name: MCP tool writing outside project
+    description: >
+      An MCP server tool is writing files outside the agent's working
+      directory. MCP tools should be scoped to the current project.
+    severity: HIGH
+    tags: [mcp, boundary_violation, file_write]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - any_of:
+          - field: agent.tool_input
+            contains: "/etc/"
+          - field: agent.tool_input
+            contains: "/root/"
+          - field: agent.tool_input
+            pattern: "\\.ssh/"
+          - field: agent.tool_input
+            pattern: "\\.aws/"
+          - field: agent.tool_input
+            pattern: "\\.config/systemd/"
+
+  - id: MCP-004
+    name: MCP tool executing shell commands
+    description: >
+      An MCP server tool is executing shell commands. MCP servers with
+      shell access can run arbitrary code on the host system, bypassing
+      the agent's permission model.
+    severity: HIGH
+    tags: [mcp, shell_exec, rce]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - any_of:
+          - field: agent.tool_input
+            pattern: "(bash|sh|zsh|cmd|powershell)\\s+-c\\s+"
+          - field: agent.tool_input
+            pattern: "subprocess\\.run|os\\.system|child_process\\.exec"
+          - field: agent.tool_input
+            pattern: "exec\\(|eval\\("
+
+  - id: MCP-003
+    name: MCP tool making outbound HTTP
+    description: >
+      An MCP server tool is making HTTP requests to external URLs.
+      Could be legitimate API calls, or data exfiltration sending
+      conversation/code content to attacker infrastructure.
+    severity: HIGH
+    tags: [mcp, exfiltration, outbound_http]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - any_of:
+          - field: agent.tool_input
+            pattern: "https?://(?!localhost|127\\.0\\.0\\.1)"
+          - field: agent.tool_input
+            pattern: "fetch\\(|requests\\.(get|post)|urllib|axios\\."
+
+  # ═══════════════════════════════════════════════════════════════
+  # MEDIUM — Suspicious MCP patterns
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: MCP-005
+    name: Unrecognized MCP tool prefix
+    description: >
+      Tool call from an MCP server that doesn't match any configured
+      MCP servers in the inventory. Could indicate a rogue or
+      recently-added MCP server.
+    severity: MEDIUM
+    tags: [mcp, unknown_server, inventory_mismatch]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - field: agent.tool_name
+        not_contains: "memory"
+      - field: agent.tool_name
+        not_contains: "analytics"
+      - field: agent.tool_name
+        not_contains: "context"
+
+  - id: MCP-006
+    name: MCP tool reading environment variables
+    description: >
+      An MCP server tool is accessing environment variables beyond
+      what was declared in its configuration. May be fishing for
+      credentials or tokens in the environment.
+    severity: MEDIUM
+    tags: [mcp, env_access, credential_access]
+    conditions:
+      - field: category
+        equals: tool_call
+      - field: agent.tool_name
+        starts_with: "mcp__"
+      - any_of:
+          - field: agent.tool_input
+            pattern: "os\\.environ|process\\.env"
+          - field: agent.tool_input
+            pattern: "getenv\\("
+          - field: agent.tool_input
+            contains: "printenv"

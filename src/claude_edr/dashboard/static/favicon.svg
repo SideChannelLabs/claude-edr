@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6ee7b7"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <!-- Shield body -->
+  <path d="M16 1 L29 6.5 V14 C29 22.5 23 28.5 16 31 C9 28.5 3 22.5 3 14 V6.5 Z" fill="#0d1117" stroke="url(#g)" stroke-width="1.8"/>
+  <!-- Inner shield highlight -->
+  <path d="M16 4 L26 8.5 V14 C26 20.8 21 26 16 28 C11 26 6 20.8 6 14 V8.5 Z" fill="none" stroke="url(#g)" stroke-width="0.5" opacity="0.3"/>
+  <!-- Eye outer -->
+  <path d="M8 15.5 Q12 10 16 10 Q20 10 24 15.5 Q20 21 16 21 Q12 21 8 15.5 Z" fill="none" stroke="url(#g2)" stroke-width="1.4"/>
+  <!-- Iris -->
+  <circle cx="16" cy="15.5" r="3.5" fill="none" stroke="url(#g2)" stroke-width="1.2"/>
+  <!-- Pupil -->
+  <circle cx="16" cy="15.5" r="1.5" fill="url(#g2)"/>
+  <!-- Scan lines -->
+  <line x1="16" y1="5" x2="16" y2="9" stroke="#34d399" stroke-width="0.6" opacity="0.5"/>
+  <line x1="16" y1="22" x2="16" y2="26" stroke="#34d399" stroke-width="0.6" opacity="0.5"/>
+</svg>

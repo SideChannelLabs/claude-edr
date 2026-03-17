@@ -1,0 +1,29 @@
+services:
+  claude-edr:
+    build: .
+    container_name: claude-edr
+    ports:
+      - "7400:7400"
+    volumes:
+      # Persist event database
+      - edr-data:/data
+      # Socket for hook scripts to connect from host
+      - /run/claude-edr:/run/claude-edr
+      # Mount rules for live editing
+      - ./rules:/app/rules:ro
+      # Mount host identity so endpoint shows real hostname
+      - /etc/hostname:/etc/host_hostname:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      # Mount home directory read-only so inventory can discover agent configs
+      - ${HOME}/.claude:/root/.claude:ro
+      - ${HOME}/.claude.json:/root/.claude.json:ro
+      - ${HOME}/.cursor:/root/.cursor:ro
+      - ${HOME}/.windsurf:/root/.windsurf:ro
+      - ${HOME}/.codex:/root/.codex:ro
+    environment:
+      - CLAUDE_EDR_DB_PATH=/data/events.db
+      - CLAUDE_EDR_SOCKET=/run/claude-edr/edr.sock
+    restart: unless-stopped
+
+volumes:
+  edr-data:
