@@ -1,5 +1,7 @@
 # Claude EDR - Endpoint Detection & Response for AI Coding Agents
 
+![Claude EDR Dashboard](screenshots/dashboard.png)
+
 **Non-invasive, kernel-level security monitoring for every AI coding agent on your machine.**
 
 Claude EDR uses eBPF to observe AI agent behavior directly from the Linux kernel - no plugins, no agent modifications, no vendor lock-in. It sees every file read, network connection, process spawn, and MCP tool call made by any AI assistant, regardless of which tool you use.
